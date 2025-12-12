@@ -1,0 +1,18 @@
+# Core Agentic/LLM Stack (OSS)
+fastapi~=0.104.1
+uvicorn~=0.23.2
+langchain~=0.1.0
+langgraph~=0.0.40
+langchain-community~=0.0.1
+pydantic~=2.5.2
+
+# RAG/Data Stack (OSS, M4 Optimized)
+lancedb~=0.4.0           # Disk-based vector store (RAM saver)
+pyarrow~=14.0.0
+# Ollama client - used for communicating with the separate Ollama service
+ollama-python~=0.1.0 
+
+# Financial Data (OSS)
+yfinance~=0.2.32
+sentence-transformers>=3.0.0
+finta~=1.1.0

@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama-deployment
+  namespace: iris
+  labels:
+    app: ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          ports:
+            - containerPort: 11434
+          resources:
+            # M4 Optimization: Reserve a minimum memory limit to prevent thrashing, but
+            # the model will use the M4's unified memory efficiently beyond this.
+            requests:
+              cpu: "1000m"
+              memory: "10Gi" # Request 10GB for the largest process (the LLM)
+          volumeMounts:
+            - name: ollama-models
+              mountPath: /root/.ollama
+          # Key MLOps/OSS step: Pull the recommended Qwen 14B quantized model on startup
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "ollama pull qwen2.5:14b"]
+      volumes:
+        - name: ollama-models
+          persistentVolumeClaim:
+            claimName: ollama-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-service # Internal DNS name used by Python services
+  namespace: iris
+spec:
+  selector:
+    app: ollama
+  ports:
+    - port: 11434
+      targetPort: 11434
+  type: ClusterIP

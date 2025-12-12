@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iris-web-ui
+  namespace: iris
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iris-web-ui
+  template:
+    metadata:
+      labels:
+        app: iris-web-ui
+    spec:
+      containers:
+        - name: web-ui
+          image: 127.0.0.1:5000/iris-web-ui:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NEXT_PUBLIC_API_URL
+              value: / # Access via Ingress/Nginx on same host
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iris-web-ui
+  namespace: iris
+spec:
+  selector:
+    app: iris-web-ui
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP

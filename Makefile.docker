@@ -1,0 +1,153 @@
+# Makefile for IRIS Project (Containerized CI/CD)
+# All operations run in Docker containers for OS independence
+
+# OS Detection and GPU Configuration
+OS_NAME := $(shell uname -s 2>/dev/null || echo Windows)
+DOCKER_COMPOSE_FLAGS := -f docker-compose.yml
+
+# Check for Linux + NVIDIA
+ifeq ($(OS_NAME),Linux)
+    ifneq ($(shell which nvidia-smi 2>/dev/null),)
+        DOCKER_COMPOSE_FLAGS += -f docker-compose.nvidia.yml
+        @echo "Detected Linux with NVIDIA GPU - enabling GPU support"
+    endif
+endif
+
+.PHONY: all build test clean help up down logs
+
+# --- HELP ---
+help:
+	@echo "IRIS Containerized Build System"
+	@echo "================================"
+	@echo ""
+	@echo "All commands run in Docker containers - works on Windows/Mac/Linux"
+	@echo ""
+	@echo "Development Commands:"
+	@echo "  make build          - Build all Docker images"
+	@echo "  make test           - Run all tests in containers"
+	@echo "  make test-unit      - Run Python unit tests"
+	@echo "  make test-integration - Run API integration tests"
+	@echo "  make up             - Start all services locally"
+	@echo "  make down           - Stop all services"
+	@echo "  make logs           - View service logs"
+	@echo ""
+	@echo "CI/CD Commands:"
+	@echo "  make ci             - Run full CI pipeline (build + test)"
+	@echo "  make push           - Push images to registry"
+	@echo ""
+	@echo "Cleanup Commands:"
+	@echo "  make clean          - Remove containers and images"
+	@echo "  make clean-all      - Complete cleanup (including volumes)"
+
+# --- FULL CI PIPELINE ---
+ci: build test
+	@echo "✅ CI Pipeline Complete"
+
+all: build test up
+	@echo ""
+	@echo "========================================================================="
+	@echo "✅ IRIS Services Running"
+	@echo "API Gateway: http://localhost:8080"
+	@echo "Agent Router: http://localhost:8000"
+	@echo ""
+	@echo "Test the API:"
+	@echo '  curl -X POST http://localhost:8080/v1/chat \'
+	@echo '    -H "Content-Type: application/json" \'
+	@echo '    -d '"'"'{"user_id": "test", "prompt": "Hello"}'"'"
+	@echo ""
+	@echo "View logs: make logs"
+	@echo "Stop services: make down"
+	@echo "========================================================================="
+
+# --- BUILD COMMANDS ---
+build:
+	@echo "Building all IRIS services..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) build iris-api-gateway iris-agent-router
+	@echo "✅ Build complete"
+
+build-go:
+	@echo "Building Go API Gateway..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) build iris-api-gateway
+	@echo "✅ Go service built"
+
+build-python:
+	@echo "Building Python Agent Router..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) build iris-agent-router
+	@echo "✅ Python service built"
+
+# --- TEST COMMANDS ---
+test: test-unit test-integration
+	@echo "✅ All tests passed"
+
+test-unit:
+	@echo "Running Python unit tests in container..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) run --rm python-tester
+	@echo "✅ Unit tests passed"
+
+test-integration:
+	@echo "Starting services for integration testing..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) up -d iris-api-gateway iris-agent-router
+	@echo "Waiting for services to be ready..."
+	sleep 10
+	@echo "Running integration tests..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) run --rm integration-tester
+	@echo "Stopping test services..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) down
+	@echo "✅ Integration tests passed"
+
+# --- LOCAL DEVELOPMENT ---
+up:
+	@echo "Starting IRIS services..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) up -d iris-api-gateway iris-agent-router
+	@echo "✅ Services started"
+	@echo "API Gateway: http://localhost:8080"
+	@echo "Agent Router: http://localhost:8000"
+
+up-all:
+	@echo "Starting all services including Ollama..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) up -d
+	@echo "⚠️  Ollama requires ~10GB RAM and will download Qwen 14B model"
+
+down:
+	@echo "Stopping all services..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) down
+	@echo "✅ Services stopped"
+
+logs:
+	docker-compose $(DOCKER_COMPOSE_FLAGS) logs -f
+
+restart:
+	@$(MAKE) down
+	@$(MAKE) up
+
+# --- REGISTRY COMMANDS ---
+push:
+	@echo "Pushing images to registry..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) push iris-api-gateway iris-agent-router
+	@echo "✅ Images pushed"
+
+# --- CLEANUP COMMANDS ---
+clean:
+	@echo "Removing containers and images..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) down --rmi local
+	@echo "✅ Cleanup complete"
+
+clean-all:
+	@echo "Complete cleanup (containers, images, volumes)..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) down --rmi all --volumes
+	docker system prune -f
+	@echo "✅ Complete cleanup finished"
+
+# --- UTILITY COMMANDS ---
+shell-go:
+	docker-compose run --rm go-builder sh
+
+shell-python:
+	docker-compose run --rm python-tester bash
+
+shell-test-runner:
+	docker-compose run --rm integration-tester /bin/bash
+
+status:
+	@echo "IRIS Services Status:"
+	@docker-compose ps

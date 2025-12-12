@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iris-nginx
+  namespace: iris
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iris-nginx
+  template:
+    metadata:
+      labels:
+        app: iris-nginx
+    spec:
+      containers:
+        - name: nginx
+          image: 127.0.0.1:5000/iris-nginx:latest
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iris-nginx
+  namespace: iris
+spec:
+  selector:
+    app: iris-nginx
+  ports:
+    - port: 80
+      targetPort: 80
+  type: LoadBalancer # Expose to host

@@ -1,0 +1,137 @@
+services:
+  # Go builder container for compiling the API Gateway
+  go-builder:
+    build:
+      context: .
+      dockerfile: docker/go-builder.Dockerfile
+    volumes:
+      - ./microservices/iris-api-gateway:/workspace
+      - go-cache:/go/pkg/mod
+    working_dir: /workspace
+    command: go build -o iris-gateway main.go
+
+  # Python tester for running unit tests
+  python-tester:
+    image: iris-agent-image
+    volumes:
+      - ./microservices/iris-agent-router:/app
+    working_dir: /app
+    command: python -m unittest discover -s core/agents -p "test_*.py"
+    environment:
+      - PYTHONPATH=/app
+      - LANCEDB_CONFIG_DIR=/tmp
+    depends_on:
+      - iris-agent-router
+
+  # Integration test runner
+  integration-tester:
+    build:
+      context: .
+      dockerfile: docker/test-runner.Dockerfile
+    volumes:
+      - ./tests:/tests
+      - ./scripts:/scripts
+    working_dir: /tests
+    command: /bin/bash -c "dos2unix /scripts/integration-test-docker.sh && /scripts/integration-test-docker.sh"
+    depends_on:
+      - iris-api-gateway
+      - iris-agent-router
+    environment:
+      - GATEWAY_URL=http://iris-api-gateway:8080
+
+  # IRIS Web UI
+  iris-web-ui:
+    build:
+      context: ./web-ui
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8080
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+    depends_on:
+      - iris-api-gateway
+
+  iris-nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - iris-web-ui
+      - iris-api-gateway
+
+  # IRIS services for local development
+  iris-api-gateway:
+    build:
+      context: ./microservices/iris-api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - AGENT_SERVICE_URL=http://iris-agent-router:8000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=iris_user
+      - DB_PASSWORD=iris_password
+      - DB_NAME=iris_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      iris-agent-router:
+        condition: service_started
+
+  iris-agent-router:
+    image: iris-agent-image
+    build:
+      context: ./microservices/iris-agent-router
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=qwen2.5:7b
+      - LANCE_DB_PATH=/data/db/lancedb
+    volumes:
+      - lancedb-data:/data/db
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  # Ollama service (optional, for local testing)
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./data/ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Postgres Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=iris_user
+      - POSTGRES_PASSWORD=iris_password
+      - POSTGRES_DB=iris_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iris_user -d iris_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  go-cache:
+  lancedb-data:
+  postgres-data:

@@ -1,0 +1,196 @@
+# Makefile for IRIS Project (Intelligent Risk-balanced Investment Strategist)
+
+# --- OS DETECTION ---
+ifeq ($(OS),Windows_NT)
+	DETECTED_OS := Windows
+	NULL_REDIRECT := 2>nul
+	RM := del /f /q
+	RM_DIR := rmdir /s /q
+	PATH_SEP := \\
+	DOCKER_STOP_ALL := powershell -Command "$$containers = docker ps -aq; if ($$containers) { docker stop $$containers }"
+	DOCKER_RM_ALL := powershell -Command "$$containers = docker ps -aq; if ($$containers) { docker rm $$containers }"
+	DOCKER_RMI_IRIS := powershell -Command "$$images = docker images '127.0.0.1:5000/iris-*' -aq; if ($$images) { docker rmi $$images }"
+	IF_EXIST := if exist
+	ECHO_OR := || echo
+else
+	DETECTED_OS := $(shell uname -s)
+	NULL_REDIRECT := 2>/dev/null
+	RM := rm -f
+	RM_DIR := rm -rf
+	PATH_SEP := /
+	DOCKER_STOP_ALL := docker stop $$(docker ps -aq)
+	DOCKER_RM_ALL := docker rm $$(docker ps -aq)
+	DOCKER_RMI_IRIS := docker rmi $$(docker images '127.0.0.1:5000/iris-*' -a -q)
+	IF_EXIST := test -f
+	ECHO_OR := || true
+endif
+
+# --- CONFIGURATION ---
+REGISTRY_NAME := iris-local-registry
+SERVICES := iris-api-gateway iris-agent-router
+K3D_CLUSTER := iris-k3d-cluster
+
+.PHONY: all setup build deploy test clean clean-all clean-infra stop-all-containers clean-binaries clean-volumes docker-system-prune
+
+# --- FULL WORKFLOW ---
+
+all: setup build deploy test
+	@echo "\n========================================================================="
+	@echo "✅ IRIS Full Deployment and Test Complete (Optimized for M4/16GB)."
+	@echo "1. Forward port: kubectl port-forward svc/iris-api-gateway 8080:8080 -n iris"
+	@echo "2. Access API: curl -X POST http://localhost:8080/v1/chat -H \"Content-Type: application/json\" -d '{\"user_id\": \"1\", \"prompt\": \"Should I buy TSLA?\"}'"
+	@echo "========================================================================="
+
+# --- ENVIRONMENT & INFRA COMMANDS (M4/16GB Optimization) ---
+
+setup:
+ifeq ($(DETECTED_OS),Windows)
+	@echo "⚠️  Windows detected - skipping k3d cluster creation"
+	@echo "Using Docker Desktop Kubernetes. Please ensure it's enabled in Docker Desktop settings."
+	$(MAKE) check-kubectl docker-registry-run k8s-apply-base-windows
+else
+	$(MAKE) k3d-cluster-create docker-registry-run k8s-apply-base linkerd-install
+endif
+	@echo "✅ IRIS Environment Setup Complete."
+
+check-kubectl:
+	@echo "Checking kubectl configuration..."
+	@kubectl cluster-info $(NULL_REDIRECT) $(ECHO_OR) "kubectl not configured - please enable Kubernetes in Docker Desktop"
+
+docker-registry-run:
+	@echo "Starting local Docker Registry"
+	docker run -d -p 5000:5000 --restart always --name $(REGISTRY_NAME) registry:2
+
+k3d-cluster-create:
+ifeq ($(DETECTED_OS),Windows)
+	@echo "⚠️  WARNING: K3d requires WSL2 on Windows."
+	@echo "Please run this command in WSL2 or use Docker Desktop Kubernetes instead."
+	@echo "Skipping K3d cluster creation on Windows..."
+else
+	@echo "Creating lightweight K3d cluster ($(K3D_CLUSTER)) with local registry integration."
+	@echo "K3d ensures minimal RAM usage compared to other local K8s distributions."
+	k3d cluster create $(K3D_CLUSTER) --registry-use 127.0.0.1:5000 --k3s-arg "--disable=traefik@server:0"
+endif
+
+k8s-apply-base:
+	@echo "Applying base Kubernetes infrastructure (Namespace, PVCs, Ollama LLM service)"
+	kubectl apply -f infra/k8s/01-namespace.yaml
+	kubectl apply -f infra/k8s/02-pvc-lancedb.yaml
+	@echo "NOTE: 03-ollama-deployment will trigger the Qwen 14B pull and consume ~10GB RAM"
+	kubectl apply -f infra/k8s/03-ollama-deployment.yaml
+
+k8s-apply-base-windows:
+	@echo "Applying base Kubernetes infrastructure for Docker Desktop Kubernetes"
+	@echo "Note: If kubectl fails, enable Kubernetes in Docker Desktop: Settings > Kubernetes > Enable Kubernetes"
+	@kubectl apply -f infra/k8s/01-namespace.yaml $(NULL_REDIRECT) $(ECHO_OR) "Failed - ensure Kubernetes is enabled in Docker Desktop"
+	@kubectl apply -f infra/k8s/02-pvc-lancedb.yaml $(NULL_REDIRECT) $(ECHO_OR) "PVC creation skipped"
+	@echo "⚠️  Skipping Ollama deployment on Windows - requires significant resources"
+	@echo "You can manually deploy later: kubectl apply -f infra/k8s/03-ollama-deployment.yaml"
+ 
+
+linkerd-install:
+ifeq ($(DETECTED_OS),Windows)
+	@echo "⚠️  Linkerd installation skipped on Windows. Use WSL2 for service mesh features."
+else
+	@echo "Installing Linkerd service mesh (low-overhead mTLS/observability)"
+	@echo "Ensure Linkerd CLI is installed, then run the full install process"
+	@echo "Run: linkerd install | kubectl apply -f -"
+	@echo "Linkerd simulated install. Run 'linkerd check' to verify."
+endif
+
+# --- APPLICATION LIFECYCLE COMMANDS ---
+
+build: $(addprefix build-, $(SERVICES))
+	@echo "✅ All services built and pushed to local registry."
+
+build-%:
+	@echo "Building and pushing microservice: $*"
+ifeq ($(DETECTED_OS),Windows)
+	docker build -t 127.0.0.1:5000/$*:latest microservices$(PATH_SEP)$*
+else
+	docker build -t 127.0.0.1:5000/$*:latest microservices/$*
+endif
+	docker push 127.0.0.1:5000/$*:latest
+
+deploy:
+	@echo "Deploying all IRIS services to K3d cluster with Linkerd injection"
+ifeq ($(DETECTED_OS),Windows)
+	@echo "⚠️  K8s deployment requires WSL2 or Docker Desktop Kubernetes on Windows"
+endif
+	kubectl apply -f infra/k8s/05-iris-deployments.yaml
+
+seed-db:
+	@echo "Seeding LanceDB with initial RAG context and user profiles."
+	@echo "Placeholder for a K8s Job that executes a one-off seeding script."
+	@echo "Simulated K8s job execution for DB seeding. This would run an embedding pipeline."
+
+test: test-api test-agent
+	@echo "✅ All functional tests passed."
+
+test-api:
+ifeq ($(DETECTED_OS),Windows)
+	@echo "⚠️  API integration test skipped on Windows (requires bash)"
+	@echo "The test script uses kubectl port-forward and curl which work differently on Windows"
+	@echo "To test manually:"
+	@echo "  1. kubectl port-forward svc/iris-api-gateway 8080:8080 -n iris"
+	@echo "  2. curl -X POST http://localhost:8080/v1/chat -H \"Content-Type: application/json\" -d \"{\\\"user_id\\\": \\\"1\\\", \\\"prompt\\\": \\\"test\\\"}\""
+else
+	@echo "Running API Gateway integration test..."
+	./tests/api_integration_test.sh
+endif
+
+test-agent:
+	@echo "Running LangGraph Agent trajectory test..."
+ifeq ($(DETECTED_OS),Windows)
+	cd microservices$(PATH_SEP)iris-agent-router && python -m unittest core.agents.test_agent_router
+else
+	cd microservices/iris-agent-router && python3 -m unittest core/agents/test_agent_router.py
+endif
+
+# --- CLEANUP COMMANDS ---
+
+clean-all: stop-all-containers clean-binaries clean-volumes clean-infra docker-clean clean-k3d docker-system-prune
+	@echo "🧹🔥 COMPLETE CLEANUP FINISHED - All containers, images, volumes, binaries, and K8s resources removed."
+	@echo "You can now run 'make all' for a fresh deployment."
+	@echo "Detected OS: $(DETECTED_OS)"
+
+stop-all-containers:
+	@echo "Stopping all running Docker containers..."
+	@$(DOCKER_STOP_ALL) $(NULL_REDIRECT) $(ECHO_OR) "No containers to stop"
+	@echo "Removing all Docker containers..."
+	@$(DOCKER_RM_ALL) $(NULL_REDIRECT) $(ECHO_OR) "No containers to remove"
+
+clean-binaries:
+	@echo "Removing compiled binaries..."
+ifeq ($(DETECTED_OS),Windows)
+	@if exist microservices$(PATH_SEP)iris-api-gateway$(PATH_SEP)iris-gateway $(RM) microservices$(PATH_SEP)iris-api-gateway$(PATH_SEP)iris-gateway $(NULL_REDIRECT)
+	@if exist microservices$(PATH_SEP)iris-api-gateway$(PATH_SEP)iris-gateway.exe $(RM) microservices$(PATH_SEP)iris-api-gateway$(PATH_SEP)iris-gateway.exe $(NULL_REDIRECT)
+else
+	@$(RM) microservices/iris-api-gateway/iris-gateway $(NULL_REDIRECT) $(ECHO_OR)
+	@$(RM) microservices/iris-api-gateway/iris-gateway.exe $(NULL_REDIRECT) $(ECHO_OR)
+endif
+
+clean-volumes:
+	@echo "Removing Docker volumes (DB data will be lost)..."
+	@docker volume prune -f $(NULL_REDIRECT) $(ECHO_OR) "No volumes to prune"
+
+docker-system-prune:
+	@echo "Pruning Docker system (removing unused data)..."
+	@docker system prune -af --volumes $(NULL_REDIRECT) $(ECHO_OR) "Docker system prune completed"
+
+clean: clean-infra docker-clean clean-k3d
+	@echo "🧹 Clean operation complete (K8s resources and IRIS images only)."
+
+clean-infra:
+	@echo "Deleting all IRIS K8s resources"
+	@kubectl delete -f infra/k8s/ --ignore-not-found $(NULL_REDIRECT) $(ECHO_OR) "No K8s resources found (cluster may not be running)"
+
+clean-k3d:
+	@echo "Removing K3d cluster: $(K3D_CLUSTER)"
+	@k3d cluster delete $(K3D_CLUSTER) $(NULL_REDIRECT) $(ECHO_OR) "K3d cluster not found or k3d not installed"
+
+docker-clean:
+	@echo "Removing local Docker registry and images"
+	@docker rm -f $(REGISTRY_NAME) $(NULL_REDIRECT) $(ECHO_OR) "Registry container not found"
+	@$(DOCKER_RMI_IRIS) $(NULL_REDIRECT) $(ECHO_OR) "No IRIS images to remove"
+

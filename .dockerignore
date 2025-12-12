@@ -1,0 +1,47 @@
+# .dockerignore for IRIS project
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+!README.docker.md
+
+# CI/CD (built separately)
+.github
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
+iris-gateway
+go.sum
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+
+# Node (if any)
+node_modules/
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Kubernetes (deployed separately)
+infra/
+
+# Old Makefile
+Makefile.old
