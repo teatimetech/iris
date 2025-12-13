@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
+	"iris-api-gateway/pkg/finance"
 )
 
 var db *sql.DB
@@ -68,10 +69,13 @@ type Holding struct {
 	Symbol        string  `json:"symbol"`
 	Name          string  `json:"name"`
 	Shares        float64 `json:"shares"`
-	Price         float64 `json:"price"` // Current market price (mocked or fetched)
+	Price         float64 `json:"price"` // Current market price (fetched)
 	Value         float64 `json:"value"`
+	CostBasis     float64 `json:"costBasis"` // Total cost
 	Change        float64 `json:"change"`
 	ChangePercent float64 `json:"changePercent"`
+	GainLoss      float64 `json:"gainLoss"`        // Total G/L ($)
+	GainLossPercent float64 `json:"gainLossPercent"` // Total G/L (%)
 }
 
 type AllocationData struct {
@@ -87,6 +91,8 @@ type PerformanceData struct {
 
 type Portfolio struct {
 	TotalValue     float64           `json:"totalValue"`
+	TotalGainLoss  float64           `json:"totalGainLoss"`
+	TotalGainLossPercent float64     `json:"totalGainLossPercent"`
 	TodayPL        float64           `json:"todayPL"`
 	TodayPLPercent float64           `json:"todayPLPercent"`
 	Holdings       []Holding         `json:"holdings"`
@@ -253,35 +259,113 @@ func GetPortfolioHandler(c *gin.Context) {
 	defer rows.Close()
 
 	var holdings []Holding
-	var totalValue float64
+	var symbols []string
+	
+	// Temporary map to store holding data before we have prices
+	type holdData struct {
+		Shares   float64
+		AvgPrice float64
+	}
+	tempHoldings := make(map[string]holdData)
 
 	for rows.Next() {
-		var h Holding
-		var avgPrice float64
-		if err := rows.Scan(&h.Symbol, &h.Shares, &avgPrice); err != nil {
+		var symbol string
+		var shares, avgPrice float64
+		if err := rows.Scan(&symbol, &shares, &avgPrice); err != nil {
 			continue
 		}
-
-		// In a real app, we would fetch live price here. For now, use avgPrice * 1.05 as mock current price
-		h.Price = avgPrice * 1.05
-		h.Value = h.Shares * h.Price
-		h.Name = h.Symbol // Simplification
-		h.Change = h.Price - avgPrice
-		h.ChangePercent = (h.Change / avgPrice) * 100
-
-		holdings = append(holdings, h)
-		totalValue += h.Value
+		tempHoldings[symbol] = holdData{Shares: shares, AvgPrice: avgPrice}
+		symbols = append(symbols, symbol)
 	}
 
-	// 3. Construct Response
+	// 3. Fetch Real-Time Prices
+	finClient := finance.NewClient()
+	
+	// Add market indices to fetch list for context/benchmarking (optional, but good for "how's the market")
+	// symbols = append(symbols, "^GSPC", "^IXIC") 
+	
+	quotes, err := finClient.GetQuotes(symbols)
+	if err != nil {
+		log.Printf("Error fetching quotes: %v", err)
+		// Fallback? For now just log, prices will be 0 or maybe return error?
+		// Let's proceed with 0 prices so UI doesn't crash, but maybe show error.
+	}
+
+	// 4. Calculate Portfolio Stats
+	var totalValue, totalCost float64
+	var todayPL float64
+
+	for s, hData := range tempHoldings {
+		q, ok := quotes[s]
+		currentPrice := 0.0
+		dayChange := 0.0
+		
+		if ok {
+			currentPrice = q.RegularMarketPrice
+			dayChange = q.RegularMarketChange
+		} else {
+			// Fallback: use cost basis if quote fails (bad user experience but safe)
+			// checking if it's a test/mock environment? 
+			currentPrice = hData.AvgPrice 
+		}
+
+		val := hData.Shares * currentPrice
+		cost := hData.Shares * hData.AvgPrice
+		
+		totalValue += val
+		totalCost += cost
+		todayPL += (dayChange * hData.Shares) // Today's P/L ($)
+
+		// Per Holding Stats
+		gainLoss := val - cost
+		gainLossPercent := 0.0
+		if cost > 0 {
+			gainLossPercent = (gainLoss / cost) * 100
+		}
+		
+		changePercent := 0.0
+		if ok {
+			changePercent = q.RegularMarketChangePercent
+		}
+
+		holdings = append(holdings, Holding{
+			Symbol:          s,
+			Name:            s, // Could fetch name from API too if available
+			Shares:          hData.Shares,
+			Price:           currentPrice,
+			Value:           val,
+			CostBasis:       cost,
+			Change:          dayChange,
+			ChangePercent:   changePercent,
+			GainLoss:        gainLoss,
+			GainLossPercent: gainLossPercent,
+		})
+	}
+
+	totalGainLoss := totalValue - totalCost
+	totalGainLossPercent := 0.0
+	if totalCost > 0 {
+		totalGainLossPercent = (totalGainLoss / totalCost) * 100
+	}
+	
+	todayPLPercent := 0.0
+	// Today's total percent change = (TodayPL / PreviousDayTotalValue) * 100
+	// PreviousDayTotalValue = TotalValue - TodayPL
+	prevVal := totalValue - todayPL
+	if prevVal > 0 {
+		todayPLPercent = (todayPL / prevVal) * 100
+	}
+
+	// 5. Construct Response
 	portfolio := Portfolio{
-		TotalValue:     totalValue,
-		TodayPL:        totalValue * 0.05, // Mock data
-		TodayPLPercent: 5.0,
-		Holdings:       holdings,
+		TotalValue:           totalValue,
+		TotalGainLoss:        totalGainLoss,
+		TotalGainLossPercent: totalGainLossPercent,
+		TodayPL:              todayPL,
+		TodayPLPercent:       todayPLPercent,
+		Holdings:             holdings,
 		Allocation: []AllocationData{
-			{Name: "Technology", Value: 65, Color: "#3b82f6"},
-			{Name: "Other", Value: 35, Color: "#10b981"},
+			{Name: "Equities", Value: 100, Color: "#3b82f6"}, // Simplified
 		},
 		Performance: generatePerformanceData(),
 	}

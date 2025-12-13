@@ -17,10 +17,25 @@ def get_portfolio_details(user_id: str) -> str:
         if response.status_code == 200:
             data = response.json()
             # Summarize for the LLM
-            summary = f"Total Value: ${data.get('totalValue', 0):.2f}. "
+            total_val = data.get('totalValue', 0)
+            day_pl = data.get('todayPL', 0)
+            day_pl_pct = data.get('todayPLPercent', 0)
+            total_gl = data.get('totalGainLoss', 0)
+            total_gl_pct = data.get('totalGainLossPercent', 0)
+            
+            summary = (f"Total Value: ${total_val:,.2f}. "
+                       f"Today's Change: ${day_pl:,.2f} ({day_pl_pct:.2f}%). "
+                       f"Total Gain/Loss: ${total_gl:,.2f} ({total_gl_pct:.2f}%).\n")
+                       
             holdings = data.get('holdings', [])
             if holdings:
-                summary += "Holdings: " + ", ".join([f"{h['symbol']} ({h['shares']} shares @ ${h['price']:.2f})" for h in holdings])
+                summary += "Holdings:\n"
+                for h in holdings:
+                    # Provide rich context for each holding
+                    summary += (f"- {h['symbol']}: {h['shares']} shares @ ${h['price']:.2f}. "
+                                f"Value: ${h['value']:,.2f}. "
+                                f"Day Change: {h['changePercent']:.2f}%. "
+                                f"Total Gain: {h['gainLossPercent']:.2f}% (${h['gainLoss']:,.2f}).\n")
             else:
                 summary += "No current holdings."
             return summary
@@ -91,6 +106,10 @@ def execute_trade_action(user_id: str, ticker: str, action: str, quantity: float
 def get_market_data(ticker_symbol: str) -> str:
     """Retrieves current price and 5-day performance summary from yfinance."""
     try:
+        if not ticker_symbol or ticker_symbol == "SPY":
+            # Default to S&P 500 if no specific ticker or generic request
+            ticker_symbol = "^GSPC"
+            
         ticker = yf.Ticker(ticker_symbol)
         history = ticker.history(period="5d")
         
@@ -98,9 +117,13 @@ def get_market_data(ticker_symbol: str) -> str:
              return f"No market data found for {ticker_symbol}."
 
         current_price = history['Close'].iloc[-1]
-        five_day_change = (current_price / history['Close'].iloc[0] - 1) * 100
+        start_price = history['Close'].iloc[0]
+        five_day_change = (current_price / start_price - 1) * 100
         
-        return f"Current Price of {ticker_symbol}: ${current_price:.2f}. 5-day change: {five_day_change:.2f}%."
+        # Get simplified name
+        name = ticker.info.get('shortName', ticker_symbol)
+        
+        return f"Market Data for {name} ({ticker_symbol}): Current Price ${current_price:,.2f}. 5-day change: {five_day_change:.2f}%."
     except Exception as e:
         return f"Error retrieving market data for {ticker_symbol}: {e}"
 
