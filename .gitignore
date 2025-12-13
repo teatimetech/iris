@@ -61,3 +61,4 @@ nul
 
 # Data Volumes (Large models, DB data)
 data/
+microservices/iris-api-gateway/iris-gateway
