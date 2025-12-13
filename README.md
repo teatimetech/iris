@@ -4,15 +4,18 @@ An AI-powered financial advisor built on microservices architecture, optimized f
 
 ## Architecture Overview
 
-IRIS uses a **modular, cloud-native microservices design** with two main components:
+IRIS uses a **modular, cloud-native microservices design** with three main components:
 
+- **iris-web-ui** (Next.js/React): Modern, glassmorphic web interface for user interaction
 - **iris-api-gateway** (Go/Gin): High-performance API gateway handling all client requests
 - **iris-agent-router** (Python/LangGraph): AI agent workflow orchestrator using Ollama LLM
 
 ### Technology Stack
 
+
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
+| Frontend | Next.js + Tailwind | Responsive web interface |
 | Orchestration | K3d + Docker | Lightweight Kubernetes environment |
 | API Gateway | Go + Gin Framework | Fast, concurrent request routing |
 | AI/Agent Logic | Python + LangGraph + Ollama | LLM inference and agentic workflows |
@@ -45,6 +48,10 @@ IRIS uses a **modular, cloud-native microservices design** with two main compone
 /IRIS
 ├── Makefile                          # Build, deploy, and test automation
 ├── README.md                         # This file
+├── web-ui/                          # Next.js Web Frontend
+│   ├── app/
+│   ├── components/
+│   └── public/
 ├── microservices/
 │   ├── iris-api-gateway/            # Go API Gateway
 │   │   ├── Dockerfile
@@ -122,6 +129,16 @@ python -c "from core.agents.agent_router import iris_agent; print('Module import
 
 **Expected:** Success message (Ollama connection will fail unless Ollama is running locally).
 
+### 6. Run Web UI (Local)
+
+```powershell
+cd web-ui
+npm install
+npm run dev
+```
+
+**Open:** [http://localhost:3000](http://localhost:3000)
+
 ## Full Deployment (macOS/Linux with K3d)
 
 ### Quick Start
@@ -154,10 +171,17 @@ make deploy
 make test
 ```
 
-### Access the API
+### Access the Application
 
 ```bash
-# Port-forward the API Gateway
+# Port-forward the Web UI
+kubectl port-forward svc/iris-web-ui 3000:3000 -n iris
+
+# Open http://localhost:3000 in your browser
+```
+
+```bash
+# Port-forward the API Gateway (Optional)
 kubectl port-forward svc/iris-api-gateway 8080:8080 -n iris
 
 # Test the chat endpoint
@@ -243,6 +267,7 @@ make test-api
 
 | Service | CPU | Memory | Notes |
 |---------|-----|--------|-------|
+| iris-web-ui | ~50m | ~100MB | Next.js Node server |
 | Ollama (Qwen 14B) | ~1 core | ~10GB | Main memory consumer |
 | iris-api-gateway | 100-200m | ~50MB | Go is extremely lightweight |
 | iris-agent-router | 200-500m | ~200MB | Python + LangChain overhead |
