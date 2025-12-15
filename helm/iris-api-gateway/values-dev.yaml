@@ -1,0 +1,40 @@
+# Override for dev environment
+image:
+  tag: "main-latest" # Auto-updated by CI
+
+replicaCount: 1 # Lower for dev
+autoscaling:
+  enabled: false # Disabled in dev
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+env:
+  - name: AGENT_SERVICE_URL
+    value: "http://iris-agent-router:8000"
+  - name: ALLOW_ORIGIN
+    value: "http://iris-web-ui:3000"
+
+externalSecrets:
+  enabled: true
+  data:
+    - secretKey: DB_HOST
+      remoteRefKey: iris/dev/DB_CONFIG
+      remoteRefProperty: host
+    - secretKey: DB_PORT
+      remoteRefKey: iris/dev/DB_CONFIG
+      remoteRefProperty: port
+    - secretKey: DB_USER
+      remoteRefKey: iris/dev/DB_CONFIG
+      remoteRefProperty: user
+    - secretKey: DB_PASSWORD
+      remoteRefKey: iris/dev/DB_CONFIG
+      remoteRefProperty: password
+    - secretKey: DB_NAME
+      remoteRefKey: iris/dev/DB_CONFIG
+      remoteRefProperty: dbname

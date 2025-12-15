@@ -1,0 +1,41 @@
+image:
+  repository: postgres
+  tag: "15-alpine"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 5432
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 20Gi
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
+# These should come from Vault via ExternalSecret
+externalSecrets:
+  enabled: true
+  secretStore: vault-backend
+  data:
+    - secretKey: POSTGRES_USER
+      remoteRefKey: iris/postgres
+      remoteRefProperty: user
+    - secretKey: POSTGRES_PASSWORD
+      remoteRefKey: iris/postgres
+      remoteRefProperty: password
+    - secretKey: POSTGRES_DB
+      remoteRefKey: iris/postgres
+      remoteRefProperty: database
+
+initScripts:
+  enabled: true
+  mountPath: /docker-entrypoint-initdb.d

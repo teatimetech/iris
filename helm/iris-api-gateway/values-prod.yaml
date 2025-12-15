@@ -1,0 +1,62 @@
+# Override for production environment
+image:
+  tag: "v1.0.0" # Fixed version for prod
+
+replicaCount: 3
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+  hosts:
+    - host: api.iris-prod.example.com
+      paths:
+        - path: /v1
+          pathType: Prefix
+  tls:
+    - secretName: iris-api-prod-tls
+      hosts:
+        - api.iris-prod.example.com
+
+externalSecrets:
+  enabled: true
+  data:
+    - secretKey: DB_HOST
+      remoteRefKey: iris/prod/DB_CONFIG
+      remoteRefProperty: host
+    - secretKey: DB_PORT
+      remoteRefKey: iris/prod/DB_CONFIG
+      remoteRefProperty: port
+    - secretKey: DB_USER
+      remoteRefKey: iris/prod/DB_CONFIG
+      remoteRefProperty: user
+    - secretKey: DB_PASSWORD
+      remoteRefKey: iris/prod/DB_CONFIG
+      remoteRefProperty: password
+    - secretKey: DB_NAME
+      remoteRefKey: iris/prod/DB_CONFIG
+      remoteRefProperty: dbname
+
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app: iris-api-gateway
+        topologyKey: kubernetes.io/hostname

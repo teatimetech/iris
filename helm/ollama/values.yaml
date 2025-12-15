@@ -1,0 +1,42 @@
+replicaCount: 1 # Ollama typically runs as singleton
+
+image:
+  repository: ollama/ollama
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 11434
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 50Gi # Large for model storage
+  mountPath: /root/.ollama
+
+resources:
+  limits:
+    cpu: 4000m
+    memory: 16Gi # Large for LLM inference
+  requests:
+    cpu: 2000m
+    memory: 10Gi
+
+# GPU support (optional, requires node labels)
+nodeSelector: {}
+  # nvidia.com/gpu: "true"
+
+tolerations: []
+  # - key: nvidia.com/gpu
+  #   operator: Exists
+  #   effect: NoSchedule
+
+# Model to auto-pull on startup
+models:
+  - qwen2.5:7b
+
+# Init container to pull model
+initModel:
+  enabled: true
