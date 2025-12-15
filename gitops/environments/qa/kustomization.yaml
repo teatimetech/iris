@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: iris-qa
+
+commonLabels:
+  environment: qa
+  managed-by: argocd
+
+resources: []
+
+# Patches for QA environment
+patches:
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/metadata/annotations/environment
+        value: qa
+
+  - target:
+      kind: Service
+    patch: |-
+      - op: add
+        path: /metadata/annotations/environment
+        value: qa
+
+# ConfigMap generator for environment-specific config
+configMapGenerator:
+  - name: env-config
+    literals:
+      - ENVIRONMENT=qa
+      - LOG_LEVEL=info
+      - ENABLE_DEBUG=false
+      - ENABLE_TRACING=true

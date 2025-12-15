@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: iris-agent-router
+spec:
+  selector:
+    app: iris-agent-router
+  ports:
+    - port: 80
+      targetPort: 8000

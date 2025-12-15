@@ -1,0 +1,29 @@
+# Development environment values for PostgreSQL
+replicaCount: 1
+
+image:
+  repository: postgres
+  pullPolicy: IfNotPresent
+  tag: "16-alpine"
+
+auth:
+  username: iris_user
+  password: "devpassword123"
+  database: iris_db
+
+persistence:
+  enabled: true
+  storageClass: "standard"
+  accessMode: ReadWriteOnce
+  size: 5Gi
+
+resources:
+  limits:
+    cpu: 300m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+externalSecrets:
+  enabled: false

@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgresql-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: iris
+  source:
+    repoURL: https://github.com/YOUR_ORG/IRIS
+    targetRevision: HEAD
+    path: helm/postgresql
+    helm:
+      valueFiles:
+        - values-dev.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: iris-dev
+  syncPolicy:
+    automated:
+      prune: false # Don't auto-prune database
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  revisionHistoryLimit: 10

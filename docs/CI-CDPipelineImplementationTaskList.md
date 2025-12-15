@@ -15,17 +15,27 @@
 - [ ] Add quality gates (code coverage, security scans)
 
 ## Phase 3: Helm Charts & Kustomize
-- [ ] Create Helm charts for each microservice
-- [ ] Define environment-specific values (dev/staging/prod)
-- [ ] Create Kustomize overlays as alternative
-- [ ] Add ConfigMaps and Secrets templates
+- [x] Create Helm charts for each microservice
+  - [x] iris-api-gateway (comprehensive with all templates)
+  - [x] iris-agent-router (deployment, service, HPA, NetworkPolicy, PVC)
+  - [x] iris-web-ui (complete with Ingress and ConfigMap)
+  - [x] PostgreSQL (StatefulSet with ExternalSecrets support)
+- [x] Define environment-specific values (dev/staging/prod)
+- [x] Add ConfigMaps and Secrets templates
+- [ ] Create Kustomize overlays as alternative (optional - Helm is primary)
 
 ## Phase 4: Argo CD Setup
-- [ ] Create Argo CD application manifests
-- [ ] Configure GitOps repository structure
-- [ ] Set up auto-sync for dev environment
-- [ ] Configure manual approval for staging/prod
-- [ ] Add health checks and sync policies
+- [x] Create Argo CD application manifests
+  - [x] iris-api-gateway (all 4 environments: dev, qa, stage, prod)
+  - [x] iris-agent-router (all 4 environments)
+  - [x] iris-web-ui (all 4 environments)
+  - [x] postgresql (all 4 environments with prune protection)
+  - [x] ollama (all 4 environments)
+- [x] Create Argo CD project definition with RBAC
+- [x] Configure GitOps repository structure (gitops/ directory)
+- [x] Set up auto-sync for dev and qa environments
+- [x] Configure manual approval for stage and prod
+- [x] Add health checks and sync policies
 
 ## Phase 5: Secrets Management (Vault)
 - [ ] Design secrets hierarchy

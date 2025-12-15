@@ -1,0 +1,7 @@
+ArgoCD Dashboard URL: https://localhost:8081/
+
+Login:
+
+username: admin
+Password: Y4lL5ErjyIUnVJYg
+

@@ -1,0 +1,49 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgresql-qa
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-options: "Prune=false"
+spec:
+  project: iris
+
+  source:
+    repoURL: https://github.com/teatimetech/iris
+    targetRevision: HEAD
+    path: helm/postgresql
+    helm:
+      valueFiles:
+        - values-qa.yaml
+      parameters:
+        - name: image.tag
+          value: "15-alpine"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: iris-qa
+
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  revisionHistoryLimit: 10
+
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/replicas

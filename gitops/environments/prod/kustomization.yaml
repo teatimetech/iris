@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: iris-prod
+
+commonLabels:
+  environment: prod
+  managed-by: argocd
+  criticality: high
+
+resources: []
+
+# Patches for production environment
+patches:
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/metadata/annotations/environment
+        value: production
+
+  - target:
+      kind: Service
+    patch: |-
+      - op: add
+        path: /metadata/annotations/environment
+        value: production
+
+# ConfigMap generator for environment-specific config
+configMapGenerator:
+  - name: env-config
+    literals:
+      - ENVIRONMENT=prod
+      - LOG_LEVEL=warn
+      - ENABLE_DEBUG=false
+      - ENABLE_TRACING=true
+      - ENABLE_MONITORING=true
+      - ENABLE_ALERTS=true

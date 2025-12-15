@@ -39,7 +39,7 @@ else
     endif
 endif
 
-.PHONY: all build test clean help up down logs infra
+.PHONY: all build test clean help up down logs infra deploy-argocd helm-test helm-lint
 
 # --- HELP ---
 help:
@@ -60,6 +60,10 @@ help:
 	@echo "CI/CD Commands:"
 	@echo "  make ci             - Run full CI pipeline (build + test)"
 	@echo "  make push           - Push images to registry"
+	@echo ""
+	@echo "GitOps/Kubernetes Commands:"
+	@echo "  make deploy-argocd  - Deploy Argo CD and IRIS applications to K8s"
+	@echo "  make helm-test      - Validate all Helm charts"
 	@echo ""
 	@echo "Cleanup Commands:"
 	@echo "  make clean-app      - Remove app containers and built images (keeps infra)"
@@ -175,6 +179,32 @@ push:
 	@echo "Pushing images to registry..."
 	docker-compose $(DOCKER_COMPOSE_FLAGS) push iris-api-gateway iris-agent-router
 	@echo "✅ Images pushed"
+
+# --- GITOPS / KUBERNETES DEPLOYMENT ---
+deploy-argocd:
+	@echo "Deploying Argo CD and IRIS applications..."
+	@echo "This will install Argo CD on your Kubernetes cluster and deploy IRIS apps."
+	@echo ""
+	python scripts/deploy-argocd.py
+
+helm-test:
+	@echo "Validating Helm charts..."
+ifeq ($(OS_NAME),Windows)
+	@echo "Running PowerShell test script..."
+	powershell -ExecutionPolicy Bypass -File scripts/test-helm-deployments.ps1
+else
+	@echo "Running bash test script..."
+	bash scripts/test-helm-deployments.sh
+endif
+
+helm-lint:
+	@echo "Linting all Helm charts..."
+	@helm lint helm/iris-api-gateway
+	@helm lint helm/iris-agent-router
+	@helm lint helm/iris-web-ui
+	@helm lint helm/postgresql
+	@helm lint helm/ollama
+	@echo "✅ All charts passed linting"
 
 # --- CLEANUP COMMANDS ---
 # --- CLEANUP COMMANDS ---

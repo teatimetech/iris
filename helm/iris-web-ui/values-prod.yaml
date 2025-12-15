@@ -1,0 +1,78 @@
+# Production environment values for iris-web-ui
+replicaCount: 5
+
+image:
+  repository: ghcr.io/REPLACE_WITH_YOUR_ORG/iris-web-ui
+  pullPolicy: IfNotPresent
+  tag: "" # Must be specified during deployment
+
+serviceAccount:
+  create: true
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "3000"
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 768Mi
+  requests:
+    cpu: 150m
+    memory: 384Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 5
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+  hosts:
+    - host: iris.your-domain.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: iris-web-ui-prod-tls
+      hosts:
+        - iris.your-domain.com
+
+livenessProbe:
+  enabled: true
+  path: /
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  path: /
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+env:
+  - name: NEXT_PUBLIC_API_URL
+    value: "http://iris-api-gateway:8080"
+  - name: NODE_ENV
+    value: "production"
+
+configMap:
+  enabled: false
+
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app: iris-web-ui
+        topologyKey: kubernetes.io/hostname

@@ -57,7 +57,7 @@ export default function ContentArea({ view }: ContentAreaProps) {
                     <PerformanceChart data={portfolio.performance} />
                 </div>
 
-                <HoldingsTable holdings={portfolio.holdings} />
+                <HoldingsTable portfolio={portfolio} />
             </div>
         )
     }

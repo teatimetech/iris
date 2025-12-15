@@ -1,6 +1,13 @@
 apiVersion: v2
 name: iris-web-ui
-description: IRIS Web UI - Next.js frontend
+description: IRIS Web UI - Next.js-based modern financial advisor interface
 type: application
 version: 1.0.0
 appVersion: "1.0.0"
+keywords:
+  - iris
+  - web-ui
+  - nextjs
+  - frontend
+maintainers:
+  - name: IRIS Team

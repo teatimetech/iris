@@ -1,0 +1,88 @@
+# Staging Environment Values
+# These values override the base Helm chart values for the staging environment
+
+# Common environment configuration
+environment: stage
+
+# Image pull configuration
+imagePullPolicy: IfNotPresent
+
+# Replica counts (production-like)
+replicaCount:
+  api-gateway: 3
+  agent-router: 2
+  web-ui: 3
+
+# Resource limits (production-like)
+resources:
+  api-gateway:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+  agent-router:
+    limits:
+      cpu: 4000m
+      memory: 4Gi
+    requests:
+      cpu: 1000m
+      memory: 1Gi
+
+  web-ui:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+# Auto-scaling enabled
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 60
+
+# Database configuration (production-like)
+postgresql:
+  auth:
+    database: iris_db_stage
+    username: iris_user_stage
+  persistence:
+    size: 50Gi
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: iris-stage.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: iris-stage-tls
+      hosts:
+        - iris-stage.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+
+# Service type
+service:
+  type: ClusterIP
+
+# Logging level
+logging:
+  level: info
+
+# Feature flags for staging
+features:
+  enableDebug: false
+  enableMetrics: true
+  enableTracing: true

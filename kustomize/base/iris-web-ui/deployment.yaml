@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iris-web-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iris-web-ui
+  template:
+    metadata:
+      labels:
+        app: iris-web-ui
+    spec:
+      containers:
+        - name: iris-web-ui
+          image: iris-web-ui:latest
+          ports:
+            - containerPort: 3000

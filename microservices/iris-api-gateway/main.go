@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq" // For pq.Array()
 	_ "github.com/lib/pq"
+
 	"iris-api-gateway/pkg/finance"
 )
 
@@ -66,16 +68,31 @@ type ChatResponse struct {
 
 // Portfolio Data Structures
 type Holding struct {
-	Symbol        string  `json:"symbol"`
-	Name          string  `json:"name"`
-	Shares        float64 `json:"shares"`
-	Price         float64 `json:"price"` // Current market price (fetched)
-	Value         float64 `json:"value"`
-	CostBasis     float64 `json:"costBasis"` // Total cost
-	Change        float64 `json:"change"`
-	ChangePercent float64 `json:"changePercent"`
-	GainLoss      float64 `json:"gainLoss"`        // Total G/L ($)
-	GainLossPercent float64 `json:"gainLossPercent"` // Total G/L (%)
+	Symbol            string  `json:"symbol"`
+	Name              string  `json:"name"`
+	Shares            float64 `json:"shares"`
+	Price             float64 `json:"price"`             // Current market price
+	CostBasisPerShare float64 `json:"costBasisPerShare"` // Per share cost
+	Value             float64 `json:"value"`
+	CostBasis         float64 `json:"costBasis"` // Total cost (shares * avg_price)
+	Change            float64 `json:"change"`
+	ChangePercent     float64 `json:"changePercent"`
+	GainLoss          float64 `json:"gainLoss"`        // Total G/L ($)
+	GainLossPercent   float64 `json:"gainLossPercent"` // Total G/L (%)
+}
+
+type BrokerGroup struct {
+	BrokerID        int       `json:"brokerId"`
+	BrokerName      string    `json:"brokerName"`
+	DisplayName     string    `json:"displayName"`
+	AccountNumber   string    `json:"accountNumber"`
+	PortfolioID     int       `json:"portfolioId"`
+	PortfolioName   string    `json:"portfolioName"`
+	TotalValue      float64   `json:"totalValue"`
+	TotalCost       float64   `json:"totalCost"`
+	GainLoss        float64   `json:"gainLoss"`
+	GainLossPercent float64   `json:"gainLossPercent"`
+	Holdings        []Holding `json:"holdings"`
 }
 
 type AllocationData struct {
@@ -90,14 +107,26 @@ type PerformanceData struct {
 }
 
 type Portfolio struct {
-	TotalValue     float64           `json:"totalValue"`
-	TotalGainLoss  float64           `json:"totalGainLoss"`
-	TotalGainLossPercent float64     `json:"totalGainLossPercent"`
-	TodayPL        float64           `json:"todayPL"`
-	TodayPLPercent float64           `json:"todayPLPercent"`
-	Holdings       []Holding         `json:"holdings"`
-	Allocation     []AllocationData  `json:"allocation"`
-	Performance    []PerformanceData `json:"performance"`
+	// Overall portfolio metrics
+	TotalValue           float64 `json:"totalValue"`
+	TotalCost            float64 `json:"totalCost"`
+	TotalGainLoss        float64 `json:"totalGainLoss"`
+	TotalGainLossPercent float64 `json:"totalGainLossPercent"`
+	// P/L metrics
+	TodayPL   string `json:"todayPL"`   // "$-1,017.80 (-0.92%)"
+	YtdPL     string `json:"ytdPL"`     // "$5,432.10 (4.52%)"
+	OverallPL string `json:"overallPL"` // "$12,345.67 (10.5%)"
+	// Raw values for calculations
+	TodayPLValue   float64 `json:"todayPLValue"`
+	TodayPLPercent float64 `json:"todayPLPercent"`
+	YtdPLValue     float64 `json:"ytdPLValue"`
+	YtdPLPercent   float64 `json:"ytdPLPercent"`
+	// Broker-grouped holdings
+	BrokerGroups []BrokerGroup `json:"brokerGroups"`
+	// Legacy flat holdings (for backward compatibility)
+	Holdings    []Holding         `json:"holdings"`
+	Allocation  []AllocationData  `json:"allocation"`
+	Performance []PerformanceData `json:"performance"`
 }
 
 // Transaction Structure
@@ -233,139 +262,272 @@ func GetTransactionsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, transactions)
 }
 
-// GetPortfolioHandler fetches portfolio data from Postgres
+// GetPortfolioHandler fetches portfolio data from Postgres with broker grouping
 func GetPortfolioHandler(c *gin.Context) {
 	userID := c.Param("userId")
 	log.Printf("Fetching portfolio for user: %s", userID)
 
-	// 1. Get Portfolio ID
-	var portfolioID int
-	err := db.QueryRow("SELECT id FROM portfolios WHERE user_id = $1", userID).Scan(&portfolioID)
+	// 1. Get all portfolios for this user (grouped by broker)
+	type portfolioRow struct {
+		PortfolioID   int
+		PortfolioName string
+		BrokerID      sql.NullInt64
+		BrokerName    sql.NullString
+		DisplayName   sql.NullString
+		AccountNumber sql.NullString
+	}
+
+	portfoliosQuery := `
+		SELECT p.id, p.name, p.broker_id, b.name, b.display_name, p.account_number
+		FROM portfolios p
+		LEFT JOIN brokers b ON p.broker_id = b.id
+		WHERE p.user_id = $1
+		ORDER BY b.display_name NULLS LAST, p.name
+	`
+
+	portfolioRows, err := db.Query(portfoliosQuery, userID)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Portfolio not found"})
-			return
+		log.Printf("Error fetching portfolios: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch portfolios"})
+		return
+	}
+	defer portfolioRows.Close()
+
+	var portfolios []portfolioRow
+	for portfolioRows.Next() {
+		var p portfolioRow
+		if err := portfolioRows.Scan(&p.PortfolioID, &p.PortfolioName, &p.BrokerID, &p.BrokerName, &p.DisplayName, &p.AccountNumber); err != nil {
+			log.Printf("Error scanning portfolio row: %v", err)
+			continue
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		portfolios = append(portfolios, p)
+	}
+
+	if len(portfolios) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No portfolios found"})
 		return
 	}
 
-	// 2. Get Holdings
-	rows, err := db.Query("SELECT symbol, shares, avg_price FROM holdings WHERE portfolio_id = $1", portfolioID)
+	// 2. Get holdings for all portfolios
+	type holdingRow struct {
+		PortfolioID   int
+		Symbol        string
+		Shares        float64
+		AvgPrice      float64
+		PurchaseDate  sql.NullTime
+		YtdStartValue sql.NullFloat64
+	}
+
+	holdingsQuery := `
+		SELECT portfolio_id, symbol, shares, avg_price, 
+		       original_purchase_date, ytd_start_value
+		FROM holdings
+		WHERE portfolio_id = ANY($1)
+	`
+
+	portfolioIDs := make([]int, len(portfolios))
+	for i, p := range portfolios {
+		portfolioIDs[i] = p.PortfolioID
+	}
+
+	holdingRows, err := db.Query(holdingsQuery, pq.Array(portfolioIDs))
 	if err != nil {
+		log.Printf("Error fetching holdings: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch holdings"})
 		return
 	}
-	defer rows.Close()
+	defer holdingRows.Close()
 
-	var holdings []Holding
-	var symbols []string
-	
-	// Temporary map to store holding data before we have prices
-	type holdData struct {
-		Shares   float64
-		AvgPrice float64
-	}
-	tempHoldings := make(map[string]holdData)
+	holdingsByPortfolio := make(map[int][]holdingRow)
+	var allSymbols []string
+	symbolSet := make(map[string]bool)
 
-	for rows.Next() {
-		var symbol string
-		var shares, avgPrice float64
-		if err := rows.Scan(&symbol, &shares, &avgPrice); err != nil {
+	for holdingRows.Next() {
+		var h holdingRow
+		if err := holdingRows.Scan(&h.PortfolioID, &h.Symbol, &h.Shares, &h.AvgPrice, &h.PurchaseDate, &h.YtdStartValue); err != nil {
+			log.Printf("Error scanning holding: %v", err)
 			continue
 		}
-		tempHoldings[symbol] = holdData{Shares: shares, AvgPrice: avgPrice}
-		symbols = append(symbols, symbol)
+		holdingsByPortfolio[h.PortfolioID] = append(holdingsByPortfolio[h.PortfolioID], h)
+		if !symbolSet[h.Symbol] {
+			allSymbols = append(allSymbols, h.Symbol)
+			symbolSet[h.Symbol] = true
+		}
 	}
 
-	// 3. Fetch Real-Time Prices
+	// 3. Fetch real-time prices for all symbols
 	finClient := finance.NewClient()
-	
-	// Add market indices to fetch list for context/benchmarking (optional, but good for "how's the market")
-	// symbols = append(symbols, "^GSPC", "^IXIC") 
-	
-	quotes, err := finClient.GetQuotes(symbols)
+	quotes, err := finClient.GetQuotes(allSymbols)
 	if err != nil {
 		log.Printf("Error fetching quotes: %v", err)
-		// Fallback? For now just log, prices will be 0 or maybe return error?
-		// Let's proceed with 0 prices so UI doesn't crash, but maybe show error.
+		// Continue with empty quotes - will use cost basis as fallback
+		quotes = make(map[string]finance.Quote)
 	}
 
-	// 4. Calculate Portfolio Stats
-	var totalValue, totalCost float64
-	var todayPL float64
-
-	for s, hData := range tempHoldings {
-		q, ok := quotes[s]
-		currentPrice := 0.0
-		dayChange := 0.0
-		
-		if ok {
-			currentPrice = q.RegularMarketPrice
-			dayChange = q.RegularMarketChange
-		} else {
-			// Fallback: use cost basis if quote fails (bad user experience but safe)
-			// checking if it's a test/mock environment? 
-			currentPrice = hData.AvgPrice 
-		}
-
-		val := hData.Shares * currentPrice
-		cost := hData.Shares * hData.AvgPrice
-		
-		totalValue += val
-		totalCost += cost
-		todayPL += (dayChange * hData.Shares) // Today's P/L ($)
-
-		// Per Holding Stats
-		gainLoss := val - cost
-		gainLossPercent := 0.0
-		if cost > 0 {
-			gainLossPercent = (gainLoss / cost) * 100
-		}
-		
-		changePercent := 0.0
-		if ok {
-			changePercent = q.RegularMarketChangePercent
-		}
-
-		holdings = append(holdings, Holding{
-			Symbol:          s,
-			Name:            s, // Could fetch name from API too if available
-			Shares:          hData.Shares,
-			Price:           currentPrice,
-			Value:           val,
-			CostBasis:       cost,
-			Change:          dayChange,
-			ChangePercent:   changePercent,
-			GainLoss:        gainLoss,
-			GainLossPercent: gainLossPercent,
-		})
+	// 4. Build broker groups
+	type brokerGroupKey struct {
+		BrokerID      int
+		BrokerName    string
+		DisplayName   string
+		PortfolioID   int
+		PortfolioName string
+		AccountNumber string
 	}
 
+	brokerMap := make(map[brokerGroupKey]*BrokerGroup)
+	var allHoldings []Holding
+
+	// Track overall metrics
+	var totalValue, totalCost, todayPL, ytdPL float64
+
+	for _, pRow := range portfolios {
+		holdings := holdingsByPortfolio[pRow.PortfolioID]
+		if len(holdings) == 0 {
+			continue
+		}
+
+		key := brokerGroupKey{
+			BrokerID:      int(pRow.BrokerID.Int64),
+			BrokerName:    pRow.BrokerName.String,
+			DisplayName:   pRow.DisplayName.String,
+			PortfolioID:   pRow.PortfolioID,
+			PortfolioName: pRow.PortfolioName,
+			AccountNumber: pRow.AccountNumber.String,
+		}
+
+		if key.DisplayName == "" {
+			key.DisplayName = "Other Accounts"
+		}
+
+		group := &BrokerGroup{
+			BrokerID:      key.BrokerID,
+			BrokerName:    key.BrokerName,
+			DisplayName:   key.DisplayName,
+			PortfolioID:   key.PortfolioID,
+			PortfolioName: key.PortfolioName,
+			AccountNumber: key.AccountNumber,
+			Holdings:      []Holding{},
+		}
+
+		var groupValue, groupCost float64
+
+		for _, h := range holdings {
+			q, ok := quotes[h.Symbol]
+			currentPrice := h.AvgPrice // Fallback to cost basis
+			dayChange := 0.0
+
+			if ok {
+				currentPrice = q.RegularMarketPrice
+				dayChange = q.RegularMarketChange
+			}
+
+			val := h.Shares * currentPrice
+			cost := h.Shares * h.AvgPrice
+			gainLoss := val - cost
+			gainLossPercent := 0.0
+			if cost > 0 {
+				gainLossPercent = (gainLoss / cost) * 100
+			}
+
+			changePercent := 0.0
+			if ok {
+				changePercent = q.RegularMarketChangePercent
+			}
+
+			holding := Holding{
+				Symbol:            h.Symbol,
+				Name:              h.Symbol,
+				Shares:            h.Shares,
+				Price:             currentPrice,
+				CostBasisPerShare: h.AvgPrice,
+				Value:             val,
+				CostBasis:         cost,
+				Change:            dayChange,
+				ChangePercent:     changePercent,
+				GainLoss:          gainLoss,
+				GainLossPercent:   gainLossPercent,
+			}
+
+			group.Holdings = append(group.Holdings, holding)
+			allHoldings = append(allHoldings, holding)
+
+			groupValue += val
+			groupCost += cost
+			todayPL += (dayChange * h.Shares)
+
+			// YTD P/L calculation
+			if h.YtdStartValue.Valid {
+				ytdPL += (val - h.YtdStartValue.Float64)
+			}
+		}
+
+		group.TotalValue = groupValue
+		group.TotalCost = groupCost
+		group.GainLoss = groupValue - groupCost
+		if groupCost > 0 {
+			group.GainLossPercent = (group.GainLoss / groupCost) * 100
+		}
+
+		totalValue += groupValue
+		totalCost += groupCost
+
+		brokerMap[key] = group
+	}
+
+	// Convert map to slice
+	var brokerGroups []BrokerGroup
+	for _, group := range brokerMap {
+		brokerGroups = append(brokerGroups, *group)
+	}
+
+	// 5. Calculate P/L metrics
 	totalGainLoss := totalValue - totalCost
 	totalGainLossPercent := 0.0
 	if totalCost > 0 {
 		totalGainLossPercent = (totalGainLoss / totalCost) * 100
 	}
-	
+
 	todayPLPercent := 0.0
-	// Today's total percent change = (TodayPL / PreviousDayTotalValue) * 100
-	// PreviousDayTotalValue = TotalValue - TodayPL
 	prevVal := totalValue - todayPL
 	if prevVal > 0 {
 		todayPLPercent = (todayPL / prevVal) * 100
 	}
 
-	// 5. Construct Response
+	ytdPLPercent := 0.0
+	if totalCost > 0 {
+		ytdPLPercent = (ytdPL / totalCost) * 100
+	}
+
+	// Format P/L strings
+	formatPL := func(value, percent float64) string {
+		sign := ""
+		if value >= 0 {
+			sign = "+"
+		}
+		return fmt.Sprintf("$%s%.2f (%.2f%%)", sign, value, percent)
+	}
+
+	todayPLStr := formatPL(todayPL, todayPLPercent)
+	ytdPLStr := formatPL(ytdPL, ytdPLPercent)
+	overallPLStr := formatPL(totalGainLoss, totalGainLossPercent)
+
+	// 6. Construct response
 	portfolio := Portfolio{
 		TotalValue:           totalValue,
+		TotalCost:            totalCost,
 		TotalGainLoss:        totalGainLoss,
 		TotalGainLossPercent: totalGainLossPercent,
-		TodayPL:              todayPL,
+		TodayPL:              todayPLStr,
+		YtdPL:                ytdPLStr,
+		OverallPL:            overallPLStr,
+		TodayPLValue:         todayPL,
 		TodayPLPercent:       todayPLPercent,
-		Holdings:             holdings,
+		YtdPLValue:           ytdPL,
+		YtdPLPercent:         ytdPLPercent,
+		BrokerGroups:         brokerGroups,
+		Holdings:             allHoldings, // Flat list for backward compatibility
 		Allocation: []AllocationData{
-			{Name: "Equities", Value: 100, Color: "#3b82f6"}, // Simplified
+			{Name: "Equities", Value: 100, Color: "#3b82f6"},
 		},
 		Performance: generatePerformanceData(),
 	}

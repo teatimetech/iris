@@ -1,0 +1,39 @@
+# Development environment values for iris-web-ui
+replicaCount: 1
+
+image:
+  repository: ghcr.io/REPLACE_WITH_YOUR_ORG/iris-web-ui
+  pullPolicy: Always
+  tag: "latest"
+
+serviceAccount:
+  create: true
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+
+ingress:
+  enabled: false
+
+livenessProbe:
+  enabled: false
+
+readinessProbe:
+  enabled: false
+
+env:
+  - name: NEXT_PUBLIC_API_URL
+    value: "http://iris-api-gateway:8080"
+  - name: NODE_ENV
+    value: "development"
+
+configMap:
+  enabled: false

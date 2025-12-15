@@ -1,0 +1,60 @@
+# Staging environment values for iris-web-ui
+replicaCount: 3
+
+image:
+  repository: ghcr.io/REPLACE_WITH_YOUR_ORG/iris-web-ui
+  pullPolicy: IfNotPresent
+  tag: "" # Must be specified during deployment
+
+serviceAccount:
+  create: true
+
+resources:
+  limits:
+    cpu: 300m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 75
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+  hosts:
+    - host: iris-stage.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: iris-web-ui-stage-tls
+      hosts:
+        - iris-stage.example.com
+
+livenessProbe:
+  enabled: true
+  path: /
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  enabled: true
+  path: /
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+env:
+  - name: NEXT_PUBLIC_API_URL
+    value: "http://iris-api-gateway:8080"
+  - name: NODE_ENV
+    value: "production"
+
+configMap:
+  enabled: false

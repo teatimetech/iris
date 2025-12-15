@@ -1,0 +1,100 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: iris
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: IRIS AI Financial Advisor Platform
+
+  # Source repositories
+  sourceRepos:
+    - "*" # Allow all repos (restrict in production to specific repos)
+
+  # Destination clusters and namespaces
+  destinations:
+    - namespace: "iris-*"
+      server: https://kubernetes.default.svc
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+
+  # Cluster resource allow list
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+
+  # Namespace resource allow list (more permissive within namespaces)
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  # Deny certain resource types
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+
+  # RBAC Roles
+  roles:
+    # Developers - can view and sync dev environment
+    - name: developer
+      description: Developers can view and sync dev applications
+      policies:
+        - p, proj:iris:developer, applications, get, iris/iris-*-dev, allow
+        - p, proj:iris:developer, applications, sync, iris/iris-*-dev, allow
+      groups:
+        - iris-developers
+
+    # QA - can view and sync dev and qa environments
+    - name: qa
+      description: QA team can view and sync dev/qa applications
+      policies:
+        - p, proj:iris:qa, applications, get, iris/iris-*-dev, allow
+        - p, proj:iris:qa, applications, get, iris/iris-*-qa, allow
+        - p, proj:iris:qa, applications, sync, iris/iris-*-qa, allow
+      groups:
+        - iris-qa
+
+    # Release Managers - full access to stage and prod
+    - name: release-manager
+      description: Release managers can manage stage and prod deployments
+      policies:
+        - p, proj:iris:release-manager, applications, *, iris/*, allow
+      groups:
+        - iris-release-managers
+
+    # CI/CD - can update applications (for GitOps automation)
+    - name: cicd
+      description: CI/CD pipelines can update dev applications
+      policies:
+        - p, proj:iris:cicd, applications, get, iris/*, allow
+        - p, proj:iris:cicd, applications, sync, iris/iris-*-dev, allow
+        - p, proj:iris:cicd, applications, update, iris/iris-*-dev, allow
+
+  # Sync windows (optional - define maintenance windows)
+  syncWindows:
+    - kind: allow
+      schedule: "* * * * *"
+      duration: 24h
+      applications:
+        - iris-*-dev
+        - iris-*-qa
+      manualSync: true
+    - kind: deny
+      schedule: "0 22 * * *" # No prod syncs after 10 PM
+      duration: 8h
+      applications:
+        - iris-*-prod
+      manualSync: true
+
+  # Orphaned resources (resources not tracked in Git)
+  orphanedResources:
+    warn: true

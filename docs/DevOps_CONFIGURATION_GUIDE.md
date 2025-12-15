@@ -48,58 +48,130 @@ helm/iris-api-gateway/
 └── values-prod.yaml      # Production overrides
 ```
 
-### Customization Checklist
+### Service-Specific Customization
 
-#### 1. Update Image Repository
+#### iris-api-gateway
 
-In each values file, replace:
+**Key Configuration Options:**
+
 ```yaml
 image:
-  repository: ghcr.io/REPLACE_WITH_YOUR_ORG/iris-api-gateway
-```
+  repository: ghcr.io/your-org/iris-api-gateway
+  tag: "v1.2.3"
 
-With your organization:
-```yaml
-image:
-  repository: ghcr.io/your-org-name/iris-api-gateway
-```
-
-#### 2. Configure Ingress Hosts
-
-For **production** (`values-prod.yaml`):
-```yaml
-ingress:
-  enabled: true
-  hosts:
-    - host: api.iris-prod.your-domain.com  # Change this
-  tls:
-    - secretName: iris-api-prod-tls
-      hosts:
-        - api.iris-prod.your-domain.com   # Change this
-```
-
-#### 3. Adjust Resource Limits
-
-Based on your cluster capacity:
-```yaml
 resources:
   limits:
-    cpu: 500m      # Adjust based on load testing
-    memory: 512Mi  # Monitor and adjust
+    cpu: 500m
+    memory: 512Mi
   requests:
     cpu: 200m
     memory: 256Mi
-```
 
-#### 4. Configure Autoscaling
-
-```yaml
 autoscaling:
   enabled: true
-  minReplicas: 2      # Minimum for HA
-  maxReplicas: 10     # Based on expected traffic
+  minReplicas: 2
+  maxReplicas: 10
   targetCPUUtilizationPercentage: 80
+
+env:
+  - name: AGENT_SERVICE_URL
+    value: "http://iris-agent-router:8000"
+  - name: ALLOW_ORIGIN
+    value: "https://iris.your-domain.com"
+
+externalSecrets:
+  enabled: true  # Use Vault for DB credentials
+  secretStore: vault-backend
 ```
+
+#### iris-agent-router
+
+**Key Configuration Options:**
+
+```yaml
+resources:
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+persistence:
+  enabled: true
+  storageClass: "fast-ssd"
+  size: 10Gi
+  mountPath: /data/db
+
+env:
+  - name: OLLAMA_BASE_URL
+    value: "http://ollama:11434"
+  - name: OLLAMA_MODEL
+    value: "qwen2.5:7b"
+  - name: LANCE_DB_PATH
+    value: "/data/db/lancedb"
+```
+
+#### iris-web-ui
+
+**Key Configuration Options:**
+
+```yaml
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: iris.your-domain.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: iris-web-ui-tls
+      hosts:
+        - iris.your-domain.com
+
+env:
+  - name: NEXT_PUBLIC_API_URL
+    value: "http://iris-api-gateway:8080"
+  - name: NODE_ENV
+    value: "production"
+```
+
+#### PostgreSQL
+
+**Key Configuration Options:**
+
+```yaml
+auth:
+  username: iris_user
+  password: "CHANGEME"  # Or use externalSecrets
+  database: iris_db
+
+persistence:
+  enabled: true
+  storageClass: "fast-ssd"
+  size: 100Gi  # Adjust based on data volume
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+
+externalSecrets:
+  enabled: true  # Recommended for production
+  secretStore: vault-backend
+  remoteRefKey: iris/prod/DB_CONFIG
+```
+
+### Environment Comparison
+
+| Setting | Dev | QA | Stage | Prod |
+|---------|-----|----|----|------|
+| Replicas | 1 | 2 | 2-3 | 3-5 |
+| Auto-scaling | Disabled | Enabled | Enabled | Enabled |
+| Resource limits | Low | Medium | High | High |
+| Ingress/TLS | Disabled | Enabled | Enabled (staging cert) | Enabled (prod cert) |
+| External Secrets | Disabled | Optional | Enabled | Enabled |
+| NetworkPolicy | Disabled | Enabled | Enabled | Enabled |
 
 ## Argo CD Setup
 
@@ -384,9 +456,50 @@ kubectl logs -n external-secrets-system deployment/external-secrets
 ## Next Steps
 
 1. ✅ Configure GitHub secrets
-2. ✅ Customize Helm values files
+2. ✅ Customize Helm values files for all services
 3. ✅ Install Argo CD
-4. ✅ Set up Vault
+4. ✅ Create IRIS project in Argo CD
 5. ✅ Deploy to dev environment
-6. Test end-to-end workflow
-7. Promote to QA/Stage/Prod
+6. ⏭️ Set up Vault (optional for enhanced security)
+7. ⏭️ Test end-to-end workflow
+8. ⏭️ Promote to QA/Stage/Prod
+
+## Quick Reference Commands
+
+### Helm
+
+```bash
+# List installed releases
+helm list -n iris-dev
+
+# Get values
+helm get values iris-api-gateway -n iris-dev
+
+# Upgrade release
+helm upgrade iris-api-gateway ./helm/iris-api-gateway \
+  -f ./helm/iris-api-gateway/values-dev.yaml \
+  --set image.tag=v1.2.4 \
+  -n iris-dev
+
+# Rollback
+helm rollback iris-api-gateway -n iris-dev
+
+# Uninstall
+helm uninstall iris-api-gateway -n iris-dev
+```
+
+### Argo CD
+
+```bash
+# Sync application
+kubectl -n argocd patch app iris-api-gateway-dev -p '{"operation":{"sync":{}}}' --type merge
+
+# Or use Argo CD CLI
+argocd app sync iris-api-gateway-dev
+
+# Get app status
+argocd app get iris-api-gateway-dev
+
+# View application logs
+argocd app logs iris-api-gateway-dev
+```

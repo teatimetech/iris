@@ -8,9 +8,12 @@ metadata:
 spec:
   project: iris
   source:
-    repoURL: https://github.com/YOUR_ORG/IRIS-gitops
+    repoURL: https://github.com/YOUR_ORG/IRIS
     targetRevision: HEAD
-    path: environments/dev/iris-api-gateway
+    path: helm/iris-api-gateway
+    helm:
+      valueFiles:
+        - values-dev.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: iris-dev

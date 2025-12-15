@@ -1,0 +1,78 @@
+# Development Environment Values
+# These values override the base Helm chart values for the dev environment
+
+# Common environment configuration
+environment: dev
+
+# Image pull configuration
+imagePullPolicy: Always
+
+# Replica counts (lower for dev)
+replicaCount:
+  api-gateway: 1
+  agent-router: 1
+  web-ui: 1
+
+# Resource limits (lower for dev)
+resources:
+  api-gateway:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  agent-router:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+  web-ui:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# Auto-scaling disabled for dev
+autoscaling:
+  enabled: false
+
+# Database configuration
+postgresql:
+  auth:
+    database: iris_db_dev
+    username: iris_user_dev
+  persistence:
+    size: 5Gi
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: iris-dev.local
+      paths:
+        - path: /
+          pathType: Prefix
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+
+# Service type
+service:
+  type: ClusterIP
+
+# Logging level
+logging:
+  level: debug
+
+# Feature flags for dev
+features:
+  enableDebug: true
+  enableMetrics: true
+  enableTracing: false

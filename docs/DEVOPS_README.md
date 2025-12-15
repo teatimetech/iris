@@ -22,17 +22,22 @@ Developer → GitHub → CI (Actions) → GHCR → GitOps Repo → Argo CD →  
 
 ## Prerequisites
 
-### Local Development
-- Docker Desktop
-- kubectl
-- Helm 3
-- Git
+> [!IMPORTANT]
+> For detailed installation instructions, see [INSTALLATION_GUIDE.md](file:///C:/ai_IRIS/IRIS/INSTALLATION_GUIDE.md)
 
-### Cloud/GitHub Setup
-- GitHub repository
-- GitHub Container Registry (GHCR) access
-- Kubernetes clusters (dev, qa, stage, prod)
-- Vault instance (or cloud-managed secrets)
+**Required:** Docker Desktop, kubectl, Helm 3+, Git  
+**Optional:** Argo CD CLI
+
+**Quick Install (Windows):**
+```powershell
+winget install Helm.Helm
+# Restart PowerShell
+```
+
+**Quick Install (macOS):**
+```bash
+brew install helm
+```
 
 ## Quick Start
 
@@ -122,39 +127,80 @@ git push origin v1.2.3
 
 ## Helm Charts
 
-Each microservice has a comprehensive Helm chart:
+IRIS includes production-ready Helm charts for all microservices:
+
+### Available Charts
+
+| Chart | Description | Templates |
+|-------|-------------|----------|
+| **iris-api-gateway** | Go-based API gateway | Deployment, Service, HPA, NetworkPolicy, ExternalSecret, ServiceMonitor |
+| **iris-agent-router** | Python AI agent orchestrator | Deployment, Service, HPA, NetworkPolicy, PVC, ServiceAccount |
+| **iris-web-ui** | Next.js frontend | Deployment, Service, HPA, Ingress, ConfigMap, ServiceAccount |
+| **postgresql** | PostgreSQL database | StatefulSet, Service (Headless + Standard), PVC, Secret/ExternalSecret |
+| **ollama** | LLM inference engine | Deployment, Service, PVC |
+| **redis** | Cache & session store | (Use Bitnami Helm chart) |
+| **minio** | Object storage | (Use MinIO Helm chart) |
+
+### Chart Structure
 
 ```
 helm/iris-api-gateway/
-├── Chart.yaml
-├── values.yaml
-├── values-dev.yaml
-├── values-qa.yaml
-├── values-stage.yaml
-├── values-prod.yaml
+├── Chart.yaml               # Chart metadata
+├── values.yaml              # Base values
+├── values-dev.yaml          # Development overrides
+├── values-qa.yaml           # QA overrides
+├── values-stage.yaml        # Staging overrides
+├── values-prod.yaml         # Production overrides
 └── templates/
-    ├── deployment.yaml
-    ├── service.yaml
-    ├── serviceaccount.yaml
-    ├── externalsecret.yaml
-    ├── hpa.yaml
-    ├── networkpolicy.yaml
-    ├── servicemonitor.yaml
-    └── _helpers.tpl
+    ├── deployment.yaml      # Deployment spec
+    ├── service.yaml         # Service definition
+    ├── serviceaccount.yaml  # Service account
+    ├── externalsecret.yaml  # Vault secret integration
+    ├── hpa.yaml             # Auto-scaling policy
+    ├── networkpolicy.yaml   # Network security
+    ├── servicemonitor.yaml  # Prometheus metrics
+    └── _helpers.tpl         # Template helpers
 ```
 
 ### Deploy with Helm
 
+#### Development Environment
 ```bash
-# Dev environment
-helm upgrade --install iris-api-gateway ./helm/iris-api-gateway \
-  -f ./helm/iris-api-gateway/values-dev.yaml \
-  -n iris-dev
+# Create namespace
+kubectl create namespace iris-dev
 
-# Production (via GitOps preferred)
+# Install all services
+helm install postgresql ./helm/postgresql -f ./helm/postgresql/values-dev.yaml -n iris-dev
+helm install iris-agent-router ./helm/iris-agent-router -f ./helm/iris-agent-router/values-dev.yaml -n iris-dev
+helm install iris-api-gateway ./helm/iris-api-gateway -f ./helm/iris-api-gateway/values-dev.yaml -n iris-dev
+helm install iris-web-ui ./helm/iris-web-ui -f ./helm/iris-web-ui/values-dev.yaml -n iris-dev
+```
+
+#### Production (GitOps Preferred)
+```bash
+# Direct Helm install (not recommended for prod)
 helm upgrade --install iris-api-gateway ./helm/iris-api-gateway \
   -f ./helm/iris-api-gateway/values-prod.yaml \
+  --set image.tag=v1.2.3 \
   -n iris-prod
+
+# Better: Use Argo CD (see GitOps section below)
+```
+
+### Testing Charts Locally
+
+```bash
+# Lint chart
+helm lint helm/iris-api-gateway
+
+# Dry-run install
+helm install iris-api-gateway ./helm/iris-api-gateway \
+  -f ./helm/iris-api-gateway/values-dev.yaml \
+  --dry-run --debug
+
+# Template rendering (view generated YAML)
+helm template iris-api-gateway ./helm/iris-api-gateway \
+  -f ./helm/iris-api-gateway/values-dev.yaml > output.yaml
 ```
 
 ## Multi-Environment Strategy
@@ -285,15 +331,99 @@ kubectl scale deployment iris-api-gateway --replicas=5 -n iris-dev
 kubectl logs -n iris-dev -l app=iris-api-gateway --tail=100 -f
 ```
 
+## Argo CD GitOps Deployment
+
+### GitOps Repository Structure
+
+IRIS now has a production-ready GitOps structure in `gitops/`:
+
+```
+gitops/
+├── README.md                          # GitOps usage guide
+├── argocd/
+│   └── project.yaml                   # Argo CD project with RBAC
+├── applications/                      # 20 Application manifests
+│   ├── iris-api-gateway-{env}.yaml    # 4 environments each
+│   ├── iris-agent-router-{env}.yaml
+│   ├── iris-web-ui-{env}.yaml
+│   ├── postgresql-{env}.yaml
+│   └── ollama-{env}.yaml
+└── environments/                      # Environment-specific values
+    ├── dev/
+    ├── qa/
+    ├── stage/
+    └── prod/
+```
+
+### Quick Deployment
+
+**Using Makefile (Recommended)**:
+
+```bash
+# Deploy Argo CD and all IRIS applications
+make deploy-argocd
+
+# Or validate Helm charts first
+make helm-test
+make deploy-argocd
+```
+
+**Direct Python Script**:
+
+The deployment uses a cross-platform Python script that works on **Windows**, **macOS**, and **Linux**:
+
+```bash
+# Run directly
+python scripts/deploy-argocd.py
+
+# Follow the interactive prompts to select environments
+```
+
+**Prerequisites**:
+- Python 3.6+ (comes with macOS/Linux, install on Windows)
+- kubectl configured to access your cluster
+- Helm 3.x (optional, for validation)
+
+### Manual Deployment
+
+```bash
+# Install Argo CD (if not already installed)
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Create IRIS project
+kubectl apply -f gitops/argocd/project.yaml
+
+# Deploy all dev applications
+kubectl apply -f gitops/applications/iris-api-gateway-dev.yaml
+kubectl apply -f gitops/applications/iris-agent-router-dev.yaml
+kubectl apply -f gitops/applications/iris-web-ui-dev.yaml
+kubectl apply -f gitops/applications/postgresql-dev.yaml
+kubectl apply -f gitops/applications/ollama-dev.yaml
+
+# Access Argo CD UI
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+# Open https://localhost:8080 (username: admin)
+```
+
+### Environment Promotion
+
+- **Dev & QA**: Auto-sync enabled (changes deploy automatically)
+- **Stage & Prod**: Manual sync required (approval workflow)
+
+See [gitops/README.md](file:///c:/ai_IRIS/IRIS/gitops/README.md) for complete GitOps documentation.
+
 ## Next Steps
 
 1. ✅ GitHub Actions workflows created
-2. ✅ Helm chart for iris-api-gateway complete
-3. 🚧 Create remaining Helm charts (agent-router, web-ui)
-4. 🚧 Set up GitOps repository
-5. 🚧 Install Argo CD
-6. 🚧 Configure Vault + External Secrets
-7. 🚧 Deploy observability stack
+2. ✅ Helm charts complete (iris-api-gateway, iris-agent-router, iris-web-ui, postgresql)
+3. ✅ Environment-specific values (dev, qa, stage, prod)
+4. ✅ Argo CD project and applications configured
+5. ⏭️  Install Argo CD on your cluster
+6. ⏭️  Deploy applications via Argo CD
+7. ⏭️  Configure Vault + External Secrets (optional)
+8. ⏭️  Deploy observability stack (Prometheus/Grafana)
 
 ## References
 

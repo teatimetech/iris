@@ -1,0 +1,56 @@
+# QA environment values for iris-web-ui
+replicaCount: 2
+
+image:
+  repository: ghcr.io/REPLACE_WITH_YOUR_ORG/iris-web-ui
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+serviceAccount:
+  create: true
+
+resources:
+  limits:
+    cpu: 250m
+    memory: 384Mi
+  requests:
+    cpu: 75m
+    memory: 192Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations: {}
+  hosts:
+    - host: iris-qa.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+livenessProbe:
+  enabled: true
+  path: /
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  enabled: true
+  path: /
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+env:
+  - name: NEXT_PUBLIC_API_URL
+    value: "http://iris-api-gateway:8080"
+  - name: NODE_ENV
+    value: "production"
+
+configMap:
+  enabled: false

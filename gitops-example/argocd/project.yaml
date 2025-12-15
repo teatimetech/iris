@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: iris
+  namespace: argocd
+spec:
+  description: IRIS Financial Advisor Platform
+  sourceRepos:
+    - "*" # Allow all repos - restrict this in production
+  destinations:
+    - namespace: "iris-*"
+      server: https://kubernetes.default.svc
+    - namespace: "argocd"
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  roles:
+    - name: read-only
+      description: Read-only access to IRIS applications
+      policies:
+        - p, proj:iris:read-only, applications, get, iris/*, allow
+    - name: deployer
+      description: CI/CD deployer role
+      policies:
+        - p, proj:iris:deployer, applications, sync, iris/*, allow
+        - p, proj:iris:deployer, applications, get, iris/*, allow

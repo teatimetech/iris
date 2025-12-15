@@ -5,8 +5,13 @@ image:
   pullPolicy: IfNotPresent
   tag: "latest"
 
+nameOverride: ""
+fullnameOverride: ""
+
 serviceAccount:
   create: true
+  annotations: {}
+  name: ""
 
 podAnnotations:
   prometheus.io/scrape: "true"
@@ -100,3 +105,9 @@ networkPolicy:
       ports:
         - protocol: TCP
           port: 53
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

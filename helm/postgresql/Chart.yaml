@@ -3,4 +3,9 @@ name: postgresql
 description: PostgreSQL database for IRIS
 type: application
 version: 1.0.0
-appVersion: "15"
+appVersion: "16"
+keywords:
+  - postgresql
+  - database
+maintainers:
+  - name: IRIS Team

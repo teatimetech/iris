@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iris-agent-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iris-agent-router
+  template:
+    metadata:
+      labels:
+        app: iris-agent-router
+    spec:
+      containers:
+        - name: iris-agent-router
+          image: iris-agent-router:latest
+          ports:
+            - containerPort: 8000

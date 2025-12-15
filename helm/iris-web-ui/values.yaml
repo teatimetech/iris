@@ -5,6 +5,30 @@ image:
   pullPolicy: IfNotPresent
   tag: "latest"
 
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
 service:
   type: ClusterIP
   port: 3000
@@ -39,16 +63,41 @@ autoscaling:
   maxReplicas: 10
   targetCPUUtilizationPercentage: 75
 
+livenessProbe:
+  enabled: true
+  path: /
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  enabled: true
+  path: /
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
 env:
   - name: NEXT_PUBLIC_API_URL
     value: "http://iris-api-gateway:8080"
   - name: NODE_ENV
     value: "production"
 
-securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-      - ALL
+envFrom:
+  configMapRef: false
+
+configMap:
+  enabled: false
+  data: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app: iris-web-ui
+          topologyKey: kubernetes.io/hostname

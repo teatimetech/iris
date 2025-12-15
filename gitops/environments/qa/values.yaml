@@ -1,0 +1,81 @@
+# QA Environment Values
+# These values override the base Helm chart values for the QA environment
+
+# Common environment configuration
+environment: qa
+
+# Image pull configuration
+imagePullPolicy: IfNotPresent
+
+# Replica counts (slightly higher than dev)
+replicaCount:
+  api-gateway: 2
+  agent-router: 1
+  web-ui: 2
+
+# Resource limits (moderate for QA)
+resources:
+  api-gateway:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+  agent-router:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+  web-ui:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Auto-scaling enabled for load testing
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+# Database configuration
+postgresql:
+  auth:
+    database: iris_db_qa
+    username: iris_user_qa
+  persistence:
+    size: 10Gi
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: iris-qa.local
+      paths:
+        - path: /
+          pathType: Prefix
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+
+# Service type
+service:
+  type: ClusterIP
+
+# Logging level
+logging:
+  level: info
+
+# Feature flags for QA
+features:
+  enableDebug: false
+  enableMetrics: true
+  enableTracing: true

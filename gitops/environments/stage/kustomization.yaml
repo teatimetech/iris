@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: iris-stage
+
+commonLabels:
+  environment: stage
+  managed-by: argocd
+
+resources: []
+
+# Patches for staging environment
+patches:
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/metadata/annotations/environment
+        value: staging
+
+  - target:
+      kind: Service
+    patch: |-
+      - op: add
+        path: /metadata/annotations/environment
+        value: staging
+
+# ConfigMap generator for environment-specific config
+configMapGenerator:
+  - name: env-config
+    literals:
+      - ENVIRONMENT=stage
+      - LOG_LEVEL=info
+      - ENABLE_DEBUG=false
+      - ENABLE_TRACING=true
+      - ENABLE_MONITORING=true

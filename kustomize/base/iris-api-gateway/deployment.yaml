@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iris-api-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iris-api-gateway
+  template:
+    metadata:
+      labels:
+        app: iris-api-gateway
+    spec:
+      containers:
+        - name: iris-api-gateway
+          image: iris-api-gateway:latest
+          ports:
+            - containerPort: 8080

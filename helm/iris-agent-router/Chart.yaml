@@ -4,3 +4,10 @@ description: IRIS Agent Router - Python-based AI agent workflow orchestrator
 type: application
 version: 1.0.0
 appVersion: "1.0.0"
+keywords:
+  - iris
+  - agent-router
+  - ai
+  - llm
+maintainers:
+  - name: IRIS Team
