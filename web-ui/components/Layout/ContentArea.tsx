@@ -1,5 +1,6 @@
 'use client'
 
+import { useAuth } from '@/app/context/AuthContext'
 import { usePortfolio } from '@/hooks/usePortfolio'
 import PortfolioSummary from '../Portfolio/PortfolioSummary'
 import HoldingsTable from '../Portfolio/HoldingsTable'
@@ -15,7 +16,8 @@ interface ContentAreaProps {
 }
 
 export default function ContentArea({ view }: ContentAreaProps) {
-    const { data: portfolio, error, isLoading, mutate } = usePortfolio('test-user')
+    const { user } = useAuth()
+    const { data: portfolio, error, isLoading, mutate } = usePortfolio(user?.id.toString() || '')
 
     if (view === 'analysis') return <AnalysisView />
     if (view === 'insights') return <InsightsView />

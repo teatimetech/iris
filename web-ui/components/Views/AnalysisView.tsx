@@ -1,11 +1,13 @@
 'use client'
 
+import { useAuth } from '@/app/context/AuthContext'
 import { usePortfolio } from '@/hooks/usePortfolio'
 import LoadingSkeleton from '../Portfolio/LoadingSkeleton'
 import ErrorDisplay from '../Common/ErrorDisplay'
 
 export default function AnalysisView() {
-    const { data: portfolio, error, isLoading, mutate } = usePortfolio('demo-user')
+    const { user } = useAuth()
+    const { data: portfolio, error, isLoading, mutate } = usePortfolio(user?.id.toString() || '')
 
     if (isLoading) return <LoadingSkeleton />
     if (error) return <ErrorDisplay message={error.message} onRetry={mutate} />
@@ -53,7 +55,7 @@ export default function AnalysisView() {
             <div className="glass-card p-6">
                 <h3 className="text-lg font-semibold mb-4">Sector Breakdown</h3>
                 <div className="space-y-4">
-                    {portfolio.allocation.map((sector) => (
+                    {(portfolio.allocation || []).map((sector) => (
                         <div key={sector.name} className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sector.color }} />
@@ -78,7 +80,7 @@ export default function AnalysisView() {
                 <div className="glass-card p-6">
                     <h3 className="text-lg font-semibold mb-4 text-green-400">Top Performers</h3>
                     <ul className="space-y-2">
-                        {portfolio.holdings.filter(h => h.changePercent > 0).slice(0, 3).map(h => (
+                        {(portfolio.holdings || []).filter(h => h.changePercent > 0).slice(0, 3).map(h => (
                             <li key={h.symbol} className="flex justify-between">
                                 <span>{h.name}</span>
                                 <span className="text-green-400">+{h.changePercent}%</span>
@@ -89,8 +91,8 @@ export default function AnalysisView() {
                 <div className="glass-card p-6">
                     <h3 className="text-lg font-semibold mb-4 text-red-400">Underperformers</h3>
                     <ul className="space-y-2">
-                        {portfolio.holdings.filter(h => h.changePercent < 0).length > 0 ? (
-                            portfolio.holdings.filter(h => h.changePercent < 0).slice(0, 3).map(h => (
+                        {(portfolio.holdings || []).filter(h => h.changePercent < 0).length > 0 ? (
+                            (portfolio.holdings || []).filter(h => h.changePercent < 0).slice(0, 3).map(h => (
                                 <li key={h.symbol} className="flex justify-between">
                                     <span>{h.name}</span>
                                     <span className="text-red-400">{h.changePercent}%</span>

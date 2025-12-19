@@ -72,33 +72,55 @@ services:
       - "8080:8080"
     environment:
       - AGENT_SERVICE_URL=http://iris-agent-router:8000
+      - BROKER_SERVICE_URL=http://iris-broker-service:8081
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=iris_user
       - DB_PASSWORD=iris_password
       - DB_NAME=iris_db
+      - REDIS_ADDR=redis:6379
     depends_on:
       postgres:
         condition: service_healthy
       iris-agent-router:
         condition: service_started
+      redis:
+        condition: service_healthy
 
   iris-agent-router:
     image: iris-agent-image
     build:
       context: ./microservices/iris-agent-router
       dockerfile: Dockerfile
+      args:
+        PYTORCH_INDEX: ${PYTORCH_INDEX:-https://download.pytorch.org/whl/cpu}
     ports:
       - "8000:8000"
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=qwen2.5:7b
+      - OLLAMA_PRIMARY_MODEL=${OLLAMA_PRIMARY_MODEL:-qwen2.5:14b}
+      - OLLAMA_FALLBACK_MODEL=${OLLAMA_FALLBACK_MODEL:-qwen2.5:7b}
+      - OLLAMA_MODEL=${OLLAMA_PRIMARY_MODEL:-qwen2.5:14b}
       - LANCE_DB_PATH=/data/db/lancedb
+      - BROKER_SERVICE_URL=http://iris-broker-service:8081
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - REDIS_ADDR=redis:6379
     volumes:
       - lancedb-data:/data/db
     depends_on:
       ollama:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Ollama service (optional, for local testing)
   ollama:
@@ -131,7 +153,25 @@ services:
       timeout: 5s
       retries: 5
 
+  # New Broker Service (Go) - The "Muscle"
+  iris-broker-service:
+    build:
+      context: ./microservices/iris-broker-service
+      dockerfile: Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      - ALPACA_API_KEY=CKS75QPY3ZG7MZL4CTJZRU55WJ
+      - ALPACA_API_SECRET=CWf5tsUv2NixZcR76LCMcXWgUgJdUAFRgXiTNPKuArQb
+      - ALPACA_SANDBOX=true
+      - PORT=8081
+      - REDIS_ADDR=redis:6379
+
 volumes:
   go-cache:
   lancedb-data:
   postgres-data:
+

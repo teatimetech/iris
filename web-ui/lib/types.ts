@@ -33,18 +33,23 @@ export interface BrokerGroup {
     brokerName: string
     displayName: string        // e.g., "Fidelity Investments"
     accountNumber: string
+    irisAccountNumber?: string // NEW
+    irisAccountId?: string     // NEW
     portfolioId: number
     portfolioName: string
     totalValue: number
     totalCost: number
     gainLoss: number
     gainLossPercent: number
+    cashBalance: number        // NEW (matches backend JSON)
+    buyingPower: number        // NEW
     holdings: Holding[]
 }
 
 export interface Portfolio {
     // Overall metrics
     totalValue: number
+    cashBalance: number        // NEW
     totalCost: number          // NEW
     totalGainLoss: number      // NEW
     totalGainLossPercent: number // NEW

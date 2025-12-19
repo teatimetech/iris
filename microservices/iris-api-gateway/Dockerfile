@@ -9,7 +9,7 @@ RUN go mod download
 COPY . .
 
 # Build the Go application binary
-RUN CGO_ENABLED=0 GOOS=linux go build -o /iris-gateway main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o /iris-gateway .
 
 # Final stage: Use a scratch or minimal image for security/size
 FROM alpine:latest

@@ -16,12 +16,14 @@ ifeq ($(OS_NAME),Linux)
     SLEEP_CMD := sleep
     ifneq ($(shell which nvidia-smi 2>/dev/null),)
         DOCKER_COMPOSE_FLAGS += -f docker-compose.nvidia.yml
-        @echo "Detected Linux with NVIDIA GPU - enabling GPU support"
+        export PYTORCH_INDEX := https://download.pytorch.org/whl/cu124
+        @echo "Detected Linux with NVIDIA GPU - enabling GPU support (CUDA 12.4)"
     endif
 else ifeq ($(OS_NAME),Darwin)
     # MacOS
     SLEEP_CMD := sleep
     # macOS leverages Metal (M1/M2/M3) automatically with Ollama
+    export PYTORCH_INDEX := https://download.pytorch.org/whl/cpu
     $(info Detected MacOS (Darwin) - GPU support enabled via Metal)
 else
     # Windows / MinGW
@@ -33,9 +35,11 @@ else
     
     ifneq ($(NVIDIA_SMI),)
         DOCKER_COMPOSE_FLAGS += -f docker-compose.nvidia.yml
-        $(info Windows detected with NVIDIA GPU - enabling GPU support)
+        export PYTORCH_INDEX := https://download.pytorch.org/whl/cu124
+        $(info Windows detected with NVIDIA GPU - enabling GPU support (CUDA 12.4))
     else
         $(info Windows detected - NO GPU FOUND or nvidia-smi missing (skipping GPU config))
+        export PYTORCH_INDEX := https://download.pytorch.org/whl/cpu
     endif
 endif
 
@@ -64,6 +68,7 @@ help:
 	@echo "GitOps/Kubernetes Commands:"
 	@echo "  make deploy-argocd  - Deploy Argo CD and IRIS applications to K8s"
 	@echo "  make helm-test      - Validate all Helm charts"
+	@echo "  make seed-db        - Seed database with 22 Alpaca test accounts"
 	@echo ""
 	@echo "Cleanup Commands:"
 	@echo "  make clean-app      - Remove app containers and built images (keeps infra)"
@@ -93,7 +98,7 @@ all: build test up
 # --- BUILD COMMANDS ---
 build:
 	@echo "Building all IRIS services..."
-	docker-compose $(DOCKER_COMPOSE_FLAGS) build iris-api-gateway iris-agent-router iris-web-ui
+	docker-compose $(DOCKER_COMPOSE_FLAGS) build iris-api-gateway iris-agent-router iris-web-ui iris-broker-service
 	@echo "✅ Build complete"
 
 build-go:
@@ -137,17 +142,20 @@ test-integration:
 infra:
 	@echo "Starting infrastructure services..."
 	docker volume create lancedb-data || true
-	docker-compose $(DOCKER_COMPOSE_FLAGS) up -d ollama postgres
+	docker-compose $(DOCKER_COMPOSE_FLAGS) up -d ollama postgres redis
 	@echo "waiting for ollama to be healthy..."
 	$(SLEEP_CMD) 5
-	@echo "Pulling Ollama model (this may take a while)..."
-	docker-compose $(DOCKER_COMPOSE_FLAGS) exec ollama ollama pull qwen2.5:7b
+	@echo "Pulling LLM models (this may take a while)..."
+	@echo "Primary: FinGPT-MT-Llama-3-8B..."
+	-docker-compose $(DOCKER_COMPOSE_FLAGS) exec ollama ollama pull fingpt-mt-llama3:latest || echo "FinGPT not available, will use fallback"
+	@echo "Fallback: qwen2.5:14b..."
+	docker-compose $(DOCKER_COMPOSE_FLAGS) exec ollama ollama pull qwen2.5:14b
 	@echo "✅ Infrastructure up"
 
 # --- LOCAL DEVELOPMENT ---
 up: infra
 	@echo "Starting IRIS services..."
-	docker-compose $(DOCKER_COMPOSE_FLAGS) up -d iris-api-gateway iris-agent-router iris-web-ui
+	docker-compose $(DOCKER_COMPOSE_FLAGS) up -d iris-api-gateway iris-agent-router iris-web-ui iris-broker-service
 	@echo "✅ Services started"
 	@echo "API Gateway: http://localhost:8080"
 	@echo "Agent Router: http://localhost:8000"
@@ -173,6 +181,17 @@ logs:
 restart:
 	@$(MAKE) down
 	@$(MAKE) up
+
+# --- DATABASE SEEDING ---
+seed-db:
+	@echo "Seeding database with Alpaca accounts..."
+	@echo "Waiting for PostgreSQL..."
+	$(SLEEP_CMD) 3
+	@echo "Running seed script..."
+	python scripts/seed_alpaca_accounts.py
+	@echo "✅ Database seeded with 22 Alpaca accounts"
+	@echo "Login with any account using password: password123"
+
 
 # --- REGISTRY COMMANDS ---
 push:
@@ -222,9 +241,10 @@ clean-infra:
 	@echo "✅ Infra cleanup complete"
 
 clean-all:
-	@echo "Cleaning containers and volumes (keeping images and models)..."
+	@echo "Cleaning containers and volumes (preserving LLM models and images)..."
 	docker-compose $(DOCKER_COMPOSE_FLAGS) down --volumes --remove-orphans
-	@echo "✅ Cleanup complete (Images preserved for faster rebuilds)"
+	@echo "Note: LLM models in ./data/ollama are preserved for faster rebuilds"
+	@echo "✅ Cleanup complete (Images and LLMs preserved)"
 
 nuke-all:
 	@echo "Full nuclear clean (removing ALL images, volumes, and build cache)..."

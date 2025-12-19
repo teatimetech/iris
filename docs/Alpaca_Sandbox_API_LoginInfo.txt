@@ -1,0 +1,10 @@
+
+Alpaca Broker Account Dashboard URL: https://broker-app.alpaca.markets/
+Alpaca Broker account Login: 
+User: elapsed.words@gmail.com
+Pass: Elapsed1R152026
+
+Alpaca Sandbox API Key & Secret:
+
+api_key: CKS75QPY3ZG7MZL4CTJZRU55WJ
+api_secret:  CWf5tsUv2NixZcR76LCMcXWgUgJdUAFRgXiTNPKuArQb

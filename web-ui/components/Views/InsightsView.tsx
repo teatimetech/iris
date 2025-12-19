@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useAuth } from '@/app/context/AuthContext'
 import { usePortfolio } from '@/hooks/usePortfolio'
 import { useChat } from '@/hooks/useChat'
 import LoadingSkeleton from '../Portfolio/LoadingSkeleton'
@@ -8,8 +9,9 @@ import ErrorDisplay from '../Common/ErrorDisplay'
 import { motion } from 'framer-motion'
 
 export default function InsightsView() {
-    const { data: portfolio, error, isLoading } = usePortfolio('demo-user')
-    const { messages, isLoading: isChatLoading, sendMessage } = useChat()
+    const { user } = useAuth()
+    const { data: portfolio, error, isLoading } = usePortfolio(user?.id.toString() || '')
+    const { messages, isLoading: isChatLoading, sendMessage } = useChat([], user?.id.toString() || '')
     const [hasGenerated, setHasGenerated] = useState(false)
 
     if (isLoading) return <LoadingSkeleton />

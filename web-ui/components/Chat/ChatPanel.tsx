@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useEffect } from 'react'
+import { useAuth } from '@/app/context/AuthContext'
 import { useChat } from '@/hooks/useChat'
 import MessageBubble from './MessageBubble'
 import ChatInput from './ChatInput'
@@ -11,14 +12,8 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ onViewChange }: ChatPanelProps) {
-    const { messages, isLoading, sendMessage } = useChat([
-        {
-            id: '1',
-            role: 'assistant',
-            content: 'Hello! I\'m IRIS, your AI financial advisor. How can I help you today?',
-            timestamp: new Date(),
-        },
-    ])
+    const { user } = useAuth()
+    const { messages, isLoading, sendMessage } = useChat([], user?.id || '')
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
     const scrollToBottom = () => {

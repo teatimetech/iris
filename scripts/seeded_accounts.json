@@ -1,0 +1,23 @@
+[
+  {
+    "name": "Alice Trader",
+    "account_id": "1a3a5474-83ee-4132-8092-bfad2e758c28",
+    "account_number": "123322347",
+    "funds_requested": 15000,
+    "current_cash": ""
+  },
+  {
+    "name": "Bob Investor",
+    "account_id": "d9795f06-bd7d-4a24-af1e-f32a375ea65f",
+    "account_number": "123488287",
+    "funds_requested": 10000,
+    "current_cash": ""
+  },
+  {
+    "name": "Charlie Yield",
+    "account_id": "04892f7d-5bee-40c6-92bb-b4b554b534bc",
+    "account_number": "123627500",
+    "funds_requested": 20000,
+    "current_cash": ""
+  }
+]

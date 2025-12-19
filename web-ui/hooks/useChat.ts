@@ -8,7 +8,7 @@ interface UseChatReturn {
     sendMessage: (content: string) => Promise<void>
 }
 
-export function useChat(initialMessages: Message[] = []): UseChatReturn {
+export function useChat(initialMessages: Message[] = [], userId: string = 'test-user'): UseChatReturn {
     const [messages, setMessages] = useState<Message[]>(initialMessages)
     const [isLoading, setIsLoading] = useState(false)
 
@@ -24,7 +24,7 @@ export function useChat(initialMessages: Message[] = []): UseChatReturn {
         setIsLoading(true)
 
         try {
-            const response = await sendChatMessage('test-user', content)
+            const response = await sendChatMessage(userId, content)
 
             const aiMessage: Message = {
                 id: (Date.now() + 1).toString(),

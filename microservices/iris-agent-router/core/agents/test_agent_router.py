@@ -59,11 +59,13 @@ class TestAgentRouter(unittest.TestCase):
     @patch('core.agents.agent_router.get_portfolio_details')
     @patch('core.agents.agent_router.get_market_data')
     @patch('core.agents.agent_router.lookup_rag_context')
-    def test_fetch_financial_data(self, mock_rag, mock_market, mock_portfolio, mock_activity, mock_history):
+    @patch('core.agents.agent_router.build_user_context')
+    def test_fetch_financial_data(self, mock_user_context, mock_rag, mock_market, mock_portfolio, mock_activity, mock_history):
         """Test that fetch_financial_data retrieves and formats context."""
         from core.agents.agent_router import fetch_financial_data
         
         # Mock the tool responses
+        mock_user_context.return_value = "User Profile: Risk=High. Holdings: TSLA."
         mock_market.return_value = "SPY: $450.00, 5-day: +2.5%"
         mock_rag.return_value = "Market outlook is positive"
         mock_portfolio.return_value = "Total Value: $10000"
@@ -82,8 +84,8 @@ class TestAgentRouter(unittest.TestCase):
         # Verify that tool_outputs are populated properly
         self.assertIn("tool_outputs", result)
         self.assertIn("context_data", result["tool_outputs"])
-        self.assertIn("Market Intelligence", result["tool_outputs"]["context_data"])
-        self.assertIn("User Context", result["tool_outputs"]["context_data"])
+        self.assertIn("[Market Setup]", result["tool_outputs"]["context_data"])
+        self.assertIn("User Profile", result["tool_outputs"]["context_data"])
 
     @patch('core.agents.agent_router.LLM')
     def test_generate_response(self, mock_llm):

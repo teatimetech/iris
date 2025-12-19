@@ -1,0 +1,7 @@
+﻿docker : cat: can't open '/app/main.go': No such file or directory
+At line:1 char:1
++ docker exec k8s_gateway_iris-api-gateway-74649dbcfd-zpnwc_iris_729f3a ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (cat: can't open...le or directory:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

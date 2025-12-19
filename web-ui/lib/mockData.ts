@@ -4,6 +4,7 @@ import type { Portfolio } from './types'
 export function getMockPortfolio(): Portfolio {
     return {
         totalValue: 125450.32,
+        cashBalance: 25450.32,
         totalCost: 100000.00,
         totalGainLoss: 25450.32,
         totalGainLossPercent: 25.45,

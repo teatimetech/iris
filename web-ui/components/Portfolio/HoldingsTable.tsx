@@ -20,7 +20,13 @@ export default function HoldingsTable({ portfolio }: HoldingsTableProps) {
                             <div className="flex justify-between items-center">
                                 <div>
                                     <h4 className="text-xl font-bold text-blue-400">{group.displayName}</h4>
-                                    <p className="text-sm text-gray-400">{group.portfolioName} • {group.accountNumber}</p>
+                                    {group.displayName.includes('IRIS Core') ? (
+                                        <div className="text-xs text-gray-500 font-mono mt-1 space-x-2">
+                                            <span>Acct #: {group.irisAccountNumber || 'Pending'}</span>
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-gray-400">{group.portfolioName} • {group.accountNumber}</p>
+                                    )}
                                 </div>
                                 <div className="text-right">
                                     <p className="text-sm text-gray-400">Portfolio Value</p>

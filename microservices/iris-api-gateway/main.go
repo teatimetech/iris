@@ -10,11 +10,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/lib/pq" // For pq.Array()
+	"github.com/gin-gonic/gin" // For pq.Array()
 	_ "github.com/lib/pq"
-
-	"iris-api-gateway/pkg/finance"
 )
 
 var db *sql.DB
@@ -92,6 +89,7 @@ type BrokerGroup struct {
 	TotalCost       float64   `json:"totalCost"`
 	GainLoss        float64   `json:"gainLoss"`
 	GainLossPercent float64   `json:"gainLossPercent"`
+	CashBalance     float64   `json:"cashBalance"`
 	Holdings        []Holding `json:"holdings"`
 }
 
@@ -112,6 +110,7 @@ type Portfolio struct {
 	TotalCost            float64 `json:"totalCost"`
 	TotalGainLoss        float64 `json:"totalGainLoss"`
 	TotalGainLossPercent float64 `json:"totalGainLossPercent"`
+	CashBalance          float64 `json:"cashBalance"` // Available cash
 	// P/L metrics
 	TodayPL   string `json:"todayPL"`   // "$-1,017.80 (-0.92%)"
 	YtdPL     string `json:"ytdPL"`     // "$5,432.10 (4.52%)"
@@ -262,278 +261,7 @@ func GetTransactionsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, transactions)
 }
 
-// GetPortfolioHandler fetches portfolio data from Postgres with broker grouping
-func GetPortfolioHandler(c *gin.Context) {
-	userID := c.Param("userId")
-	log.Printf("Fetching portfolio for user: %s", userID)
-
-	// 1. Get all portfolios for this user (grouped by broker)
-	type portfolioRow struct {
-		PortfolioID   int
-		PortfolioName string
-		BrokerID      sql.NullInt64
-		BrokerName    sql.NullString
-		DisplayName   sql.NullString
-		AccountNumber sql.NullString
-	}
-
-	portfoliosQuery := `
-		SELECT p.id, p.name, p.broker_id, b.name, b.display_name, p.account_number
-		FROM portfolios p
-		LEFT JOIN brokers b ON p.broker_id = b.id
-		WHERE p.user_id = $1
-		ORDER BY b.display_name NULLS LAST, p.name
-	`
-
-	portfolioRows, err := db.Query(portfoliosQuery, userID)
-	if err != nil {
-		log.Printf("Error fetching portfolios: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch portfolios"})
-		return
-	}
-	defer portfolioRows.Close()
-
-	var portfolios []portfolioRow
-	for portfolioRows.Next() {
-		var p portfolioRow
-		if err := portfolioRows.Scan(&p.PortfolioID, &p.PortfolioName, &p.BrokerID, &p.BrokerName, &p.DisplayName, &p.AccountNumber); err != nil {
-			log.Printf("Error scanning portfolio row: %v", err)
-			continue
-		}
-		portfolios = append(portfolios, p)
-	}
-
-	if len(portfolios) == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "No portfolios found"})
-		return
-	}
-
-	// 2. Get holdings for all portfolios
-	type holdingRow struct {
-		PortfolioID   int
-		Symbol        string
-		Shares        float64
-		AvgPrice      float64
-		PurchaseDate  sql.NullTime
-		YtdStartValue sql.NullFloat64
-	}
-
-	holdingsQuery := `
-		SELECT portfolio_id, symbol, shares, avg_price, 
-		       original_purchase_date, ytd_start_value
-		FROM holdings
-		WHERE portfolio_id = ANY($1)
-	`
-
-	portfolioIDs := make([]int, len(portfolios))
-	for i, p := range portfolios {
-		portfolioIDs[i] = p.PortfolioID
-	}
-
-	holdingRows, err := db.Query(holdingsQuery, pq.Array(portfolioIDs))
-	if err != nil {
-		log.Printf("Error fetching holdings: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch holdings"})
-		return
-	}
-	defer holdingRows.Close()
-
-	holdingsByPortfolio := make(map[int][]holdingRow)
-	var allSymbols []string
-	symbolSet := make(map[string]bool)
-
-	for holdingRows.Next() {
-		var h holdingRow
-		if err := holdingRows.Scan(&h.PortfolioID, &h.Symbol, &h.Shares, &h.AvgPrice, &h.PurchaseDate, &h.YtdStartValue); err != nil {
-			log.Printf("Error scanning holding: %v", err)
-			continue
-		}
-		holdingsByPortfolio[h.PortfolioID] = append(holdingsByPortfolio[h.PortfolioID], h)
-		if !symbolSet[h.Symbol] {
-			allSymbols = append(allSymbols, h.Symbol)
-			symbolSet[h.Symbol] = true
-		}
-	}
-
-	// 3. Fetch real-time prices for all symbols
-	finClient := finance.NewClient()
-	quotes, err := finClient.GetQuotes(allSymbols)
-	if err != nil {
-		log.Printf("Error fetching quotes: %v", err)
-		// Continue with empty quotes - will use cost basis as fallback
-		quotes = make(map[string]finance.Quote)
-	}
-
-	// 4. Build broker groups
-	type brokerGroupKey struct {
-		BrokerID      int
-		BrokerName    string
-		DisplayName   string
-		PortfolioID   int
-		PortfolioName string
-		AccountNumber string
-	}
-
-	brokerMap := make(map[brokerGroupKey]*BrokerGroup)
-	var allHoldings []Holding
-
-	// Track overall metrics
-	var totalValue, totalCost, todayPL, ytdPL float64
-
-	for _, pRow := range portfolios {
-		holdings := holdingsByPortfolio[pRow.PortfolioID]
-		if len(holdings) == 0 {
-			continue
-		}
-
-		key := brokerGroupKey{
-			BrokerID:      int(pRow.BrokerID.Int64),
-			BrokerName:    pRow.BrokerName.String,
-			DisplayName:   pRow.DisplayName.String,
-			PortfolioID:   pRow.PortfolioID,
-			PortfolioName: pRow.PortfolioName,
-			AccountNumber: pRow.AccountNumber.String,
-		}
-
-		if key.DisplayName == "" {
-			key.DisplayName = "Other Accounts"
-		}
-
-		group := &BrokerGroup{
-			BrokerID:      key.BrokerID,
-			BrokerName:    key.BrokerName,
-			DisplayName:   key.DisplayName,
-			PortfolioID:   key.PortfolioID,
-			PortfolioName: key.PortfolioName,
-			AccountNumber: key.AccountNumber,
-			Holdings:      []Holding{},
-		}
-
-		var groupValue, groupCost float64
-
-		for _, h := range holdings {
-			q, ok := quotes[h.Symbol]
-			currentPrice := h.AvgPrice // Fallback to cost basis
-			dayChange := 0.0
-
-			if ok {
-				currentPrice = q.RegularMarketPrice
-				dayChange = q.RegularMarketChange
-			}
-
-			val := h.Shares * currentPrice
-			cost := h.Shares * h.AvgPrice
-			gainLoss := val - cost
-			gainLossPercent := 0.0
-			if cost > 0 {
-				gainLossPercent = (gainLoss / cost) * 100
-			}
-
-			changePercent := 0.0
-			if ok {
-				changePercent = q.RegularMarketChangePercent
-			}
-
-			holding := Holding{
-				Symbol:            h.Symbol,
-				Name:              h.Symbol,
-				Shares:            h.Shares,
-				Price:             currentPrice,
-				CostBasisPerShare: h.AvgPrice,
-				Value:             val,
-				CostBasis:         cost,
-				Change:            dayChange,
-				ChangePercent:     changePercent,
-				GainLoss:          gainLoss,
-				GainLossPercent:   gainLossPercent,
-			}
-
-			group.Holdings = append(group.Holdings, holding)
-			allHoldings = append(allHoldings, holding)
-
-			groupValue += val
-			groupCost += cost
-			todayPL += (dayChange * h.Shares)
-
-			// YTD P/L calculation
-			if h.YtdStartValue.Valid {
-				ytdPL += (val - h.YtdStartValue.Float64)
-			}
-		}
-
-		group.TotalValue = groupValue
-		group.TotalCost = groupCost
-		group.GainLoss = groupValue - groupCost
-		if groupCost > 0 {
-			group.GainLossPercent = (group.GainLoss / groupCost) * 100
-		}
-
-		totalValue += groupValue
-		totalCost += groupCost
-
-		brokerMap[key] = group
-	}
-
-	// Convert map to slice
-	var brokerGroups []BrokerGroup
-	for _, group := range brokerMap {
-		brokerGroups = append(brokerGroups, *group)
-	}
-
-	// 5. Calculate P/L metrics
-	totalGainLoss := totalValue - totalCost
-	totalGainLossPercent := 0.0
-	if totalCost > 0 {
-		totalGainLossPercent = (totalGainLoss / totalCost) * 100
-	}
-
-	todayPLPercent := 0.0
-	prevVal := totalValue - todayPL
-	if prevVal > 0 {
-		todayPLPercent = (todayPL / prevVal) * 100
-	}
-
-	ytdPLPercent := 0.0
-	if totalCost > 0 {
-		ytdPLPercent = (ytdPL / totalCost) * 100
-	}
-
-	// Format P/L strings
-	formatPL := func(value, percent float64) string {
-		sign := ""
-		if value >= 0 {
-			sign = "+"
-		}
-		return fmt.Sprintf("$%s%.2f (%.2f%%)", sign, value, percent)
-	}
-
-	todayPLStr := formatPL(todayPL, todayPLPercent)
-	ytdPLStr := formatPL(ytdPL, ytdPLPercent)
-	overallPLStr := formatPL(totalGainLoss, totalGainLossPercent)
-
-	// 6. Construct response
-	portfolio := Portfolio{
-		TotalValue:           totalValue,
-		TotalCost:            totalCost,
-		TotalGainLoss:        totalGainLoss,
-		TotalGainLossPercent: totalGainLossPercent,
-		TodayPL:              todayPLStr,
-		YtdPL:                ytdPLStr,
-		OverallPL:            overallPLStr,
-		TodayPLValue:         todayPL,
-		TodayPLPercent:       todayPLPercent,
-		YtdPLValue:           ytdPL,
-		YtdPLPercent:         ytdPLPercent,
-		BrokerGroups:         brokerGroups,
-		Holdings:             allHoldings, // Flat list for backward compatibility
-		Allocation: []AllocationData{
-			{Name: "Equities", Value: 100, Color: "#3b82f6"},
-		},
-		Performance: generatePerformanceData(),
-	}
-
-	c.JSON(http.StatusOK, portfolio)
-}
+// (Code moved to handlers_portfolio.go)
 
 // TradeRequest defines the body for executing a trade
 type TradeRequest struct {
@@ -556,9 +284,23 @@ func ExecuteTradeHandler(c *gin.Context) {
 
 	// 1. Get Portfolio ID
 	var portfolioID int
-	err := db.QueryRow("SELECT id FROM portfolios WHERE user_id = $1", req.UserID).Scan(&portfolioID)
+	// Adjusted for new schema: portfolios -> accounts -> users
+	// We assume 'IRIS Core' (or first found) if multiple, or simple join
+	err := db.QueryRow(`
+		SELECT p.id 
+		FROM portfolios p 
+		JOIN accounts a ON p.account_id = a.id 
+		WHERE a.user_id = $1
+		LIMIT 1
+	`, req.UserID).Scan(&portfolioID)
+
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Portfolio not found for user"})
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Portfolio not found for user"})
+		} else {
+			log.Printf("Error finding portfolio: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		}
 		return
 	}
 
@@ -572,10 +314,6 @@ func ExecuteTradeHandler(c *gin.Context) {
 	}
 
 	// 3. Update Holdings
-	// Simple logic: Check if exists, then update.
-	// In a real app, we'd handle "SELL" validation (do we have enough shares?) and avg cost calculation.
-
-	// Check current holding
 	var currentShares float64
 	err = db.QueryRow("SELECT shares FROM holdings WHERE portfolio_id = $1 AND symbol = $2", portfolioID, req.Symbol).Scan(&currentShares)
 
@@ -595,7 +333,6 @@ func ExecuteTradeHandler(c *gin.Context) {
 		newShares := currentShares
 		if req.Action == "BUY" {
 			newShares += req.Shares
-			// Avg Price update omitted for simplicity in this demo, but should be: (old_val + new_val) / new_total_shares
 		} else if req.Action == "SELL" {
 			if currentShares < req.Shares {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Insufficient shares to sell"})
@@ -607,6 +344,7 @@ func ExecuteTradeHandler(c *gin.Context) {
 		if newShares == 0 {
 			_, err = db.Exec("DELETE FROM holdings WHERE portfolio_id = $1 AND symbol = $2", portfolioID, req.Symbol)
 		} else {
+			// Note: Updating avg_price is skipped for simplicity
 			_, err = db.Exec("UPDATE holdings SET shares = $1 WHERE portfolio_id = $2 AND symbol = $3",
 				newShares, portfolioID, req.Symbol)
 		}
@@ -622,9 +360,7 @@ func ExecuteTradeHandler(c *gin.Context) {
 		"status":  "success",
 		"message": fmt.Sprintf("Trade executed: %s %v %s", req.Action, req.Shares, req.Symbol),
 	})
-}
-
-// generatePerformanceData creates 30 days of mock performance data
+} // generatePerformanceData creates 30 days of mock performance data
 func generatePerformanceData() []PerformanceData {
 	data := make([]PerformanceData, 30)
 	baseValue := 120000.0
@@ -645,6 +381,7 @@ func main() {
 
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(gin.Logger())
 
 	// CORS middleware for web-ui access
 	allowOrigin := os.Getenv("ALLOW_ORIGIN")
@@ -671,19 +408,27 @@ func main() {
 			c.JSON(503, gin.H{"status": "unhealthy", "db": "disconnected"})
 			return
 		}
-		c.JSON(200, gin.H{
-			"status":  "healthy",
-			"service": "iris-api-gateway",
-		})
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "db": "connected"})
 	})
 
+	// Protected routes (could add middleware here)
 	v1 := router.Group("/v1")
 	{
+		// Auth endpoints
+		v1.POST("/auth/signup", SignUpHandler)
+		v1.POST("/auth/login", LoginHandler)
+
 		v1.POST("/chat", ChatHandler)
 		v1.GET("/chat/history/:userId", GetChatHistoryHandler)
+
+		// Portfolio endpoints
 		v1.GET("/portfolio/:userId", GetPortfolioHandler)
 		v1.GET("/transactions/:userId", GetTransactionsHandler)
 		v1.POST("/trade", ExecuteTradeHandler)
+
+		// KYC & Onboarding
+		v1.POST("/kyc/step", KYCStepHandler)
+		v1.POST("/onboarding/complete", OnboardingHandler)
 	}
 
 	port := os.Getenv("PORT")

@@ -12,7 +12,7 @@ export default function PerformanceChart({ data }: PerformanceChartProps) {
         <div className="glass-card p-6">
             <h3 className="text-lg font-semibold mb-4">Performance (30 Days)</h3>
             <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={data}>
+                <LineChart data={data || []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
                     <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} tickFormatter={(value) => value.slice(5)} />
                     <YAxis stroke="#9ca3af" fontSize={12} />
