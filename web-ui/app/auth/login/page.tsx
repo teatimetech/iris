@@ -23,9 +23,32 @@ export default function LoginPage() {
 
         try {
             const res = await axios.post(`${API_URL}/login`, { email, password });
-            login("mock-token", res.data.user);
+            console.log('Login API response:', res.data); // Debug logging
+
+            // Backend returns: { user_id, account_id, email, first_name, last_name, message }
+            // Create comprehensive user object with both snake_case and camelCase for compatibility
+            const userData = {
+                // Primary user fields
+                id: res.data.user_id,
+                user_id: res.data.user_id,
+                email: res.data.email,
+                first_name: res.data.first_name,
+                last_name: res.data.last_name,
+
+                // Account fields (both naming conventions for compatibility)
+                account_id: res.data.account_id,
+                accountId: res.data.account_id,
+
+                // KYC fields
+                kyc_status: 'VERIFIED' as const,
+                kyc_step: 5,
+                kyc_data: '{}'
+            };
+
+            console.log('Mapped user data:', userData); // Debug logging
+            login("mock-token", userData);
         } catch (err: any) {
-            // detailed error message from backend (e.g., "User not found" or "Invalid password")
+            console.error('Login error:', err); // Debug logging
             setError(err.response?.data?.error || 'An unexpected system error occurred. Please try again.');
         } finally {
             setIsSubmitting(false);

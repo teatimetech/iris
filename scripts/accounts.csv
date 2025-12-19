@@ -1,0 +1,23 @@
+account_number,account_id,name,email,equity,last_equity,address,status,crypto_status,cash_interest_status,apr_tier,created_at
+124515122,7e47986e-f83e-4c47-8244-6793ae0d3d90,Charlie Yield,charlie.login@example.com,0,0,"1222 Canal Parkway, Chicago, IL, 60131, USA",ACTIVE,INACTIVE,,,2025-12-18T02:14:24.537954Z
+124999528,74c7957b-e06c-4b3b-ace1-ec5d1ebe5433,Investor Final User,investor_final@example.com,45090.31,44917.61,"123 Wall St, New York, NY, 10005, USA",ACTIVE,INACTIVE,,,2025-12-17T15:09:11.626836Z
+124719886,9e8f5ff1-086d-4b26-b63d-cf1faeda86d6,API Test,api_test_user_4@example.com,45000,45000,"123 Test St, Test City, NY, 10001, USA",ACTIVE,INACTIVE,,,2025-12-17T14:43:02.992135Z
+123591151,3d028c50-c1e3-439c-b189-55f22c91b379,API Test,api_test_user_3@example.com,45000,45000,"123 Test St, Test City, NY, 10001, USA",ACTIVE,INACTIVE,,,2025-12-17T06:43:42.999442Z
+123409926,ba911c85-41ca-45c9-b00e-c52f6b9610d4,API Test,api_test_user_2@example.com,45000,45000,"123 Test St, Test City, NY, 10001, USA",ACTIVE,INACTIVE,,,2025-12-17T06:42:23.066323Z
+123373602,bd1cfdb2-c884-4b22-b506-5c305da6c726,Browser Test User,fix_test@example.com,0,0,"1234 abcd, Denver, CO, 80130, USA",ACTIVE,INACTIVE,,,2025-12-17T06:22:13.600328Z
+123627500,04892f7d-5bee-40c6-92bb-b4b554b534bc,Charlie Yield,charlie_8638@example.com,20000,20000,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-17T06:02:11.079773Z
+123488287,d9795f06-bd7d-4a24-af1e-f32a375ea65f,Bob Investor,bob_8638@example.com,10000,10000,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-17T06:02:09.274359Z
+123322347,1a3a5474-83ee-4132-8092-bfad2e758c28,Alice Trader,alice_8638@example.com,15053.98,14934.06,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-17T06:02:07.46803Z
+123330643,278bed09-af83-4156-b041-3bcc73a0f1e7,Charlie Yield,charlie_6712@example.com,20000,20000,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-16T21:47:23.897031Z
+123445664,a9c997ca-a81c-4390-8548-09d45b51f507,Bob Investor,bob_6712@example.com,10000,10000,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-16T21:47:22.244934Z
+123103312,b751b9a7-bcb0-4993-9696-8833fff8f363,Alice Trader,alice_6712@example.com,15000,15000,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-16T21:47:20.617564Z
+123901040,2ce1cf8f-b691-4cf8-93da-f86d0ac880a1,Charlie Yield,charlie_2525@example.com,0,0,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-16T21:46:57.624739Z
+123713870,6926c224-5a2d-4d37-a985-2bdc71d15df1,Bob Investor,bob_2525@example.com,50000,50000,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-16T21:46:55.986619Z
+123304342,b999ee6c-2c67-4bbf-9e0c-370cd8ca2b95,Alice Trader,alice_2525@example.com,0,0,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-16T21:46:54.489905Z
+123756037,dcb7f45c-c3eb-4cdb-80a5-240b0733aa6d,Charlie Yield,charlie_8991@example.com,0,0,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-16T21:46:10.597687Z
+123294086,016f8c03-4b01-41fd-b482-ff73abbb5b4b,Bob Investor,bob_8991@example.com,0,0,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-16T21:46:09.176411Z
+123359115,1d93ecfa-e37f-44aa-a5c7-880e7805a4f1,Alice Trader,alice_8991@example.com,0,0,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-16T21:46:07.737843Z
+123256007,e2eb37ff-199f-47ce-a9c6-6aadeb902ab8,Charlie Yield,charlie@example.com,0,0,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-16T21:45:18.042464Z
+123601773,d6efc63f-15ae-429f-bcc0-97eea1417deb,Bob Investor,bob@example.com,0,0,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-16T21:45:16.624574Z
+123579853,e4b13393-b63c-4dc3-bcf8-4aa2f4377f8b,Alice Trader,alice@example.com,0,0,"123 Tech Blvd, San Francisco, CA, 94107, USA",ACTIVE,INACTIVE,,,2025-12-16T21:45:15.033728Z
+122766601,b0238cb6-de24-43f9-9c57-d80ae3b6641a,Iris Test,iris_test_105@example.com,0,0,"20 N San Mateo Dr, San Mateo, CA, 94401, USA",ACTIVE,INACTIVE,,,2025-12-16T07:27:20.897478Z
