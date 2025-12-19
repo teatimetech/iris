@@ -7,6 +7,9 @@ import axios from 'axios';
 // Define User Type
 export interface User {
     id: string;
+    user_id: string;      // Added for backend consistency
+    account_id: string;   // Added for portfolio lookup
+    accountId: string;    // Added for camelCase compatibility
     email: string;
     first_name: string;
     last_name: string;
@@ -39,8 +42,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     useEffect(() => {
         // Check local storage for session
         const storedUser = localStorage.getItem('iris_user');
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
+        if (storedUser && storedUser !== 'undefined') {
+            try {
+                setUser(JSON.parse(storedUser));
+            } catch (e) {
+                console.error('Failed to parse stored user:', e);
+                localStorage.removeItem('iris_user');
+            }
         }
         setLoading(false);
     }, []);

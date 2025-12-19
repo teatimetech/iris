@@ -79,18 +79,20 @@ type Holding struct {
 }
 
 type BrokerGroup struct {
-	BrokerID        int       `json:"brokerId"`
-	BrokerName      string    `json:"brokerName"`
-	DisplayName     string    `json:"displayName"`
-	AccountNumber   string    `json:"accountNumber"`
-	PortfolioID     int       `json:"portfolioId"`
-	PortfolioName   string    `json:"portfolioName"`
-	TotalValue      float64   `json:"totalValue"`
-	TotalCost       float64   `json:"totalCost"`
-	GainLoss        float64   `json:"gainLoss"`
-	GainLossPercent float64   `json:"gainLossPercent"`
-	CashBalance     float64   `json:"cashBalance"`
-	Holdings        []Holding `json:"holdings"`
+	BrokerID          int       `json:"brokerId"`
+	BrokerName        string    `json:"brokerName"`
+	DisplayName       string    `json:"displayName"`
+	AccountNumber     string    `json:"accountNumber"`
+	IrisAccountNumber string    `json:"irisAccountNumber"` // NEW
+	IrisAccountId     string    `json:"irisAccountId"`     // NEW
+	PortfolioID       int       `json:"portfolioId"`
+	PortfolioName     string    `json:"portfolioName"`
+	TotalValue        float64   `json:"totalValue"`
+	TotalCost         float64   `json:"totalCost"`
+	GainLoss          float64   `json:"gainLoss"`
+	GainLossPercent   float64   `json:"gainLossPercent"`
+	CashBalance       float64   `json:"cashBalance"`
+	Holdings          []Holding `json:"holdings"`
 }
 
 type AllocationData struct {

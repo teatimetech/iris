@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
-import axios from 'axios';
+import api from '../../../lib/api';
 import Link from 'next/link';
 
 export default function LoginPage() {
@@ -13,33 +13,24 @@ export default function LoginPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { login } = useAuth();
 
-    // Use relative path to leverage Next.js rewrites
-    const API_URL = "/api/auth";
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
         setError('');
 
         try {
-            const res = await axios.post(`${API_URL}/login`, { email, password });
+            const res = await api.post(`/v1/auth/login`, { email, password });
             console.log('Login API response:', res.data); // Debug logging
 
             // Backend returns: { user_id, account_id, email, first_name, last_name, message }
-            // Create comprehensive user object with both snake_case and camelCase for compatibility
             const userData = {
-                // Primary user fields
                 id: res.data.user_id,
                 user_id: res.data.user_id,
                 email: res.data.email,
                 first_name: res.data.first_name,
                 last_name: res.data.last_name,
-
-                // Account fields (both naming conventions for compatibility)
                 account_id: res.data.account_id,
                 accountId: res.data.account_id,
-
-                // KYC fields
                 kyc_status: 'VERIFIED' as const,
                 kyc_step: 5,
                 kyc_data: '{}'

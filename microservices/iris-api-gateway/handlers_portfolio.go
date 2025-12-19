@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"net/http"
 
+	"bytes"
+	"encoding/json"
 	"iris-api-gateway/pkg/finance"
 	"log"
+	"os"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
@@ -20,20 +24,23 @@ func GetPortfolioHandler(c *gin.Context) {
 
 	// 1. Get all portfolios for this user (grouped by broker)
 	type portfolioRow struct {
-		PortfolioID   int
-		PortfolioName string
-		PortfolioType string
-		BrokerID      sql.NullInt64
-		BrokerName    sql.NullString
-		DisplayName   sql.NullString
-		AccountNumber sql.NullString  // Alpaca Account Number from Accounts table
-		CashBalance   sql.NullFloat64 // Added cash balance
+		PortfolioID       int
+		AccountID         string
+		PortfolioName     string
+		PortfolioType     string
+		BrokerID          sql.NullInt64
+		BrokerName        sql.NullString
+		DisplayName       sql.NullString
+		AccountNumber     sql.NullString
+		AlpacaAccountId   sql.NullString
+		IrisAccountNumber sql.NullString
+		IrisAccountId     sql.NullString
+		CashBalance       sql.NullFloat64
 	}
 
 	// Join accounts to get user portfolios
-	// Portfolios are now linked to Accounts, which are linked to Users.
 	portfolioRows, err := db.Query(`
-		SELECT p.id, p.name, p.type, p.broker_id, b.name, b.display_name, a.alpaca_account_number, p.cash_balance
+		SELECT p.id, p.account_id, p.name, p.type, p.broker_id, b.name, b.display_name, a.alpaca_account_number, a.alpaca_account_id, p.iris_account_number, p.iris_account_id, p.cash_balance
 		FROM portfolios p
 		JOIN accounts a ON p.account_id = a.id
 		LEFT JOIN brokers b ON p.broker_id = b.id
@@ -50,16 +57,68 @@ func GetPortfolioHandler(c *gin.Context) {
 	var portfolios []portfolioRow
 	for portfolioRows.Next() {
 		var p portfolioRow
-		if err := portfolioRows.Scan(&p.PortfolioID, &p.PortfolioName, &p.PortfolioType, &p.BrokerID, &p.BrokerName, &p.DisplayName, &p.AccountNumber, &p.CashBalance); err != nil {
+		if err := portfolioRows.Scan(&p.PortfolioID, &p.AccountID, &p.PortfolioName, &p.PortfolioType, &p.BrokerID, &p.BrokerName, &p.DisplayName, &p.AccountNumber, &p.AlpacaAccountId, &p.IrisAccountNumber, &p.IrisAccountId, &p.CashBalance); err != nil {
 			log.Printf("Error scanning portfolio row: %v", err)
 			continue
 		}
+
+		// --- Real-time Alpaca Sync & Auto-Funding ---
+		if p.PortfolioType == "IRIS Core" && p.AlpacaAccountId.Valid && p.AlpacaAccountId.String != "" {
+			brokerURL := os.Getenv("BROKER_SERVICE_URL")
+			if brokerURL == "" {
+				brokerURL = "http://iris-broker-service:8081"
+			}
+
+			log.Printf("Syncing Alpaca account %s from Broker Service", p.AlpacaAccountId.String)
+			resp, err := http.Get(fmt.Sprintf("%s/v1/portfolio/%s", brokerURL, p.AlpacaAccountId.String))
+			if err == nil && resp.StatusCode == http.StatusOK {
+				var bData struct {
+					Account struct {
+						Cash string `json:"cash"`
+					} `json:"account"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&bData); err == nil {
+					cash, _ := strconv.ParseFloat(bData.Account.Cash, 64)
+					log.Printf("Alpaca cash balance for %s: %v", p.AlpacaAccountId.String, cash)
+
+					// Auto-funding logic: if balance is 0, add $25,000
+					if cash <= 0 {
+						log.Printf("Auto-funding account %s with $25,000", p.AlpacaAccountId.String)
+						fundData := map[string]string{
+							"account_id": p.AlpacaAccountId.String,
+							"amount":     "25000",
+						}
+						fBytes, _ := json.Marshal(fundData)
+						fResp, fErr := http.Post(fmt.Sprintf("%s/v1/funds", brokerURL), "application/json", bytes.NewBuffer(fBytes))
+						if fErr == nil && fResp.StatusCode == http.StatusOK {
+							log.Printf("Successfully funded account %s", p.AlpacaAccountId.String)
+							cash = 25000 // Update local value to reflect funding
+						} else if fErr != nil {
+							log.Printf("Funding failed: %v", fErr)
+						} else {
+							log.Printf("Funding request returned status: %d", fResp.StatusCode)
+						}
+					}
+
+					p.CashBalance.Float64 = cash
+					p.CashBalance.Valid = true
+
+					// Persist latest balance to DB
+					_, dbErr := db.Exec("UPDATE portfolios SET cash_balance = $1, last_synced_at = NOW() WHERE id = $2", cash, p.PortfolioID)
+					if dbErr != nil {
+						log.Printf("Failed to update portfolio balance in DB: %v", dbErr)
+					}
+				}
+				resp.Body.Close()
+			} else if err != nil {
+				log.Printf("Broker Service connection failed: %v", err)
+			}
+		}
+
 		portfolios = append(portfolios, p)
 	}
 
 	if len(portfolios) == 0 {
-		// New schema: User might exist but have no portfolios if signup failed partly, or just new user.
-		// But SignUpHandler creates a default portfolio.
 		c.JSON(http.StatusNotFound, gin.H{"error": "No portfolios found"})
 		return
 	}
@@ -75,8 +134,7 @@ func GetPortfolioHandler(c *gin.Context) {
 	}
 
 	holdingsQuery := `
-		SELECT portfolio_id, symbol, shares, avg_price, 
-		       purchase_date, ytd_start_value
+		SELECT portfolio_id, symbol, shares, avg_price, purchase_date, ytd_start_value
 		FROM holdings
 		WHERE portfolio_id = ANY($1)
 	`
@@ -116,7 +174,6 @@ func GetPortfolioHandler(c *gin.Context) {
 	quotes, err := finClient.GetQuotes(allSymbols)
 	if err != nil {
 		log.Printf("Error fetching quotes: %v", err)
-		// Continue with empty quotes - will use cost basis as fallback
 		quotes = make(map[string]finance.Quote)
 	}
 
@@ -130,24 +187,11 @@ func GetPortfolioHandler(c *gin.Context) {
 		AccountNumber string
 	}
 
-	// Map to store BrokerGroup pointers
 	brokerMap := make(map[brokerGroupKey]*BrokerGroup)
-	// We also need to return a list, but the structure in the response depends on how the frontend expects it.
-	// existing code seemed to return a flat list of portfolios or groups.
-	// Let's stick to the previous 'BrokerGroups' structure which seemed to be []BrokerGroup in the Portfolio response?
-	// Wait, the Portfolio struct (in main.go) has BrokerGroups []BrokerGroup.
-	// This handler returns JSON. Let's check what it constructed.
-	// It constructed a Portfolio object at the end.
-
 	var totalValue, totalCost, totalGainLoss, todayPL, ytdPL, totalCashBalance float64
-
-	// Helper to find or create group
-	// Note: previous implementation grouped by Broker+Portfolio.
 
 	for _, pRow := range portfolios {
 		holdings := holdingsByPortfolio[pRow.PortfolioID]
-		// Even if no holdings, we might want to show the portfolio
-
 		key := brokerGroupKey{
 			BrokerID:      int(pRow.BrokerID.Int64),
 			BrokerName:    pRow.BrokerName.String,
@@ -161,38 +205,33 @@ func GetPortfolioHandler(c *gin.Context) {
 			key.DisplayName = "Other Accounts"
 		}
 
-		// In the new schema, type 'IRIS Core' vs 'IRIS Crypto'
-		// We could append the type to the name if useful, or handle it in UI.
-		// For now, let's keep it simple.
-
 		group := &BrokerGroup{
-			BrokerID:      key.BrokerID,
-			BrokerName:    key.BrokerName,
-			DisplayName:   key.DisplayName,
-			AccountNumber: key.AccountNumber,
-			PortfolioID:   key.PortfolioID,   // Added field to BrokerGroup struct if missing in main.go, check main.go definition
-			PortfolioName: key.PortfolioName, // Added field
-			CashBalance:   pRow.CashBalance.Float64,
-			Holdings:      []Holding{},
+			BrokerID:          key.BrokerID,
+			BrokerName:        key.BrokerName,
+			DisplayName:       key.DisplayName,
+			AccountNumber:     key.AccountNumber,
+			IrisAccountNumber: pRow.IrisAccountNumber.String,
+			IrisAccountId:     pRow.IrisAccountId.String,
+			PortfolioID:       key.PortfolioID,
+			PortfolioName:     key.PortfolioName,
+			CashBalance:       pRow.CashBalance.Float64,
+			Holdings:          []Holding{},
 		}
 
-		// Note: The main.go definition of BrokerGroup I saw earlier:
-		/*
-			type BrokerGroup struct {
-				BrokerID        int       `json:"brokerId"`
-				BrokerName      string    `json:"brokerName"`
-				DisplayName     string    `json:"displayName"`
-				AccountNumber   string    `json:"accountNumber"`
-				PortfolioID     int       `json:"portfolioId"`
-				PortfolioName   string    `json:"portfolioName"`
-				...
-			}
-		*/
-		// So those fields exist.
+		// Fallback to Alpaca IDs if Iris IDs are not explicitly set in the database
+		if group.IrisAccountNumber == "" {
+			group.IrisAccountNumber = key.AccountNumber
+		}
+		if group.IrisAccountId == "" && pRow.AlpacaAccountId.Valid {
+			group.IrisAccountId = pRow.AlpacaAccountId.String
+		}
+
+		groupTotalValue := 0.0
+		groupTotalCost := 0.0
 
 		for _, h := range holdings {
 			q, ok := quotes[h.Symbol]
-			currentPrice := h.AvgPrice // Fallback to cost basis
+			currentPrice := h.AvgPrice
 			dayChange := 0.0
 			changePercent := 0.0
 
@@ -212,7 +251,7 @@ func GetPortfolioHandler(c *gin.Context) {
 
 			holding := Holding{
 				Symbol:            h.Symbol,
-				Name:              h.Symbol, // We don't have name in DB yet, use symbol
+				Name:              h.Symbol,
 				Shares:            h.Shares,
 				Price:             currentPrice,
 				CostBasisPerShare: h.AvgPrice,
@@ -225,57 +264,50 @@ func GetPortfolioHandler(c *gin.Context) {
 			}
 
 			group.Holdings = append(group.Holdings, holding)
+			groupTotalValue += val
+			groupTotalCost += cost
 
-			// Accumulate metrics
-			totalValue += val
-			totalCost += cost
 			todayPL += (dayChange * h.Shares)
-
+			totalGainLoss += gainLoss
 			if h.YtdStartValue.Valid {
 				ytdPL += (val - h.YtdStartValue.Float64)
 			}
 		}
 
-		// Total Value for group includes Cash
-		group.TotalValue = totalValue + group.CashBalance
-		group.TotalCost = totalCost // Cash doesn't have cost basis in this context, or it's 1:1. Let's keep cost to holdings.
-
-		// Accumulate global cash
-		totalCashBalance += group.CashBalance
-		group.TotalCost = totalCost
-		group.GainLoss = totalValue - totalCost
-		if totalCost > 0 {
-			group.GainLossPercent = (group.GainLoss / totalCost) * 100
+		group.TotalValue = groupTotalValue + group.CashBalance
+		group.TotalCost = groupTotalCost
+		group.GainLoss = groupTotalValue - groupTotalCost
+		if groupTotalCost > 0 {
+			group.GainLossPercent = (group.GainLoss / groupTotalCost) * 100
 		}
+
+		totalValue += groupTotalValue
+		totalCost += groupTotalCost
+		totalCashBalance += group.CashBalance
 
 		brokerMap[key] = group
 	}
 
-	// Convert map to slice
 	var brokerGroups []BrokerGroup
 	for _, group := range brokerMap {
 		brokerGroups = append(brokerGroups, *group)
 	}
 
-	var totalGainLossPercent float64
+	totalGainLossPercent := 0.0
 	if totalCost > 0 {
 		totalGainLossPercent = (totalGainLoss / totalCost) * 100
 	}
 
 	todayPLPercent := 0.0
-	prevDayVal := totalValue - todayPL
-	if prevDayVal > 0 {
-		todayPLPercent = (todayPL / prevDayVal) * 100
+	if (totalValue - todayPL) > 0 {
+		todayPLPercent = (todayPL / (totalValue - todayPL)) * 100
 	}
 
 	ytdPLPercent := 0.0
-	ytdStartVal := totalValue - ytdPL
-	if ytdStartVal > 0 {
-		ytdPLPercent = (ytdPL / ytdStartVal) * 100
+	if (totalValue - ytdPL) > 0 {
+		ytdPLPercent = (ytdPL / (totalValue - ytdPL)) * 100
 	}
 
-	// Construct final response
-	// Helper for formatting
 	formatPL := func(value, percent float64) string {
 		sign := ""
 		if value >= 0 {
@@ -284,7 +316,6 @@ func GetPortfolioHandler(c *gin.Context) {
 		return fmt.Sprintf("$%s%.2f (%.2f%%)", sign, value, percent)
 	}
 
-	// Construct final response using Portfolio struct
 	response := Portfolio{
 		TotalValue:           totalValue + totalCashBalance,
 		CashBalance:          totalCashBalance,
@@ -299,7 +330,7 @@ func GetPortfolioHandler(c *gin.Context) {
 		YtdPLValue:           ytdPL,
 		YtdPLPercent:         ytdPLPercent,
 		BrokerGroups:         brokerGroups,
-		Holdings:             []Holding{}, // Empty for legacy flat holdings if not used, or flatten brokerGroups.Holdings if needed
+		Holdings:             []Holding{},
 		Allocation: []AllocationData{
 			{Name: "Equities", Value: 100, Color: "#3b82f6"},
 		},
