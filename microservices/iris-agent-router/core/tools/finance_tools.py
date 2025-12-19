@@ -9,6 +9,8 @@ LANCE_DB_PATH = os.getenv("LANCE_DB_PATH", "/data/db/lancedb")
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://iris-api-gateway:8080")
 
 def safe_float(value):
+    if isinstance(value, (int, float)):
+        return float(value)
     try:
         if value is None or value == "":
             return 0.0
@@ -26,7 +28,8 @@ def get_portfolio_details(user_id: str) -> str:
             data = response.json()
             # Summarize for the LLM
             total_val = safe_float(data.get('totalValue'))
-            day_pl = safe_float(data.get('todayPL'))
+            # Use numeric raw values instead of formatted strings
+            day_pl = safe_float(data.get('todayPLValue'))
             day_pl_pct = safe_float(data.get('todayPLPercent'))
             total_gl = safe_float(data.get('totalGainLoss'))
             total_gl_pct = safe_float(data.get('totalGainLossPercent'))
@@ -35,7 +38,14 @@ def get_portfolio_details(user_id: str) -> str:
                        f"Today's Change: ${day_pl:,.2f} ({day_pl_pct:.2f}%). "
                        f"Total Gain/Loss: ${total_gl:,.2f} ({total_gl_pct:.2f}%).\n")
                        
-            holdings = data.get('holdings', [])
+            # Handle refactored data: check top-level holdings OR brokerGroups
+            holdings = data.get('holdings') or []
+            if not holdings:
+                for group in data.get('brokerGroups', []):
+                    group_holdings = group.get('holdings', [])
+                    if group_holdings:
+                        holdings.extend(group_holdings)
+
             if holdings:
                 summary += "Holdings:\n"
                 for h in holdings:
@@ -177,8 +187,8 @@ def get_alpaca_account_id(user_id: str) -> str:
                  # Check for "Alpaca" or "Core"
                  # In migration we added name='alpaca'.
                  # Gateway logic maps broker_id to name.
-                 if group.get('brokerName') == 'alpaca' or group.get('displayName') == 'Alpaca Markets':
-                     return group.get('accountNumber')
+                 if group.get('brokerName') == 'alpaca' or group.get('displayName') == 'Alpaca Markets' or group.get('portfolioType') == 'IRIS Core':
+                     return group.get('irisAccountId') or group.get('accountNumber')
             
             # Fallback: if only one account or just return the first one?
             # Or maybe the user hasn't synced yet.
