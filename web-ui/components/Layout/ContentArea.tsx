@@ -17,7 +17,7 @@ interface ContentAreaProps {
 
 export default function ContentArea({ view }: ContentAreaProps) {
     const { user } = useAuth()
-    const { data: portfolio, error, isLoading, mutate } = usePortfolio(user?.id.toString() || '')
+    const { data: portfolio, error, isLoading, mutate } = usePortfolio(user?.id?.toString() || user?.user_id?.toString() || '')
 
     if (view === 'analysis') return <AnalysisView />
     if (view === 'insights') return <InsightsView />

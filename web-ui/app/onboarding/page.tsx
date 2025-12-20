@@ -70,16 +70,16 @@ export default function OnboardingPage() {
         setIsSubmitting(true);
         try {
             const payload = {
-                user_id: user?.id,
+                user_id: user?.user_id || user?.id,
+                account_id: user?.account_id || user?.accountId,
                 tax_id: formData.taxId,
                 date_of_birth: formData.dob,
-                street_address: [formData.street],
+                street_address: formData.street, // Backend expects string, not array
                 city: formData.city,
                 state: formData.state,
                 postal_code: formData.zip,
-                country: formData.country,
-                phone: formData.phonenumber,
-                funding_source: ["employment_income"]
+                country: formData.country || 'USA',
+                phone: formData.phonenumber
             };
 
             await axios.post(`${API_URL}/onboarding`, payload);

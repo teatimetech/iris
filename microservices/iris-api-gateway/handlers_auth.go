@@ -149,12 +149,13 @@ func LoginHandler(c *gin.Context) {
 	}
 
 	// Query profile and user data
-	var userID, accountID, firstName, lastName, passwordHash string
+	var userID, firstName, lastName, passwordHash string
+	var accountID sql.NullString // Allow null when no account exists yet
 	err := db.QueryRow(`
 		SELECT u.id, a.id, u.first_name, u.last_name, p.password_hash
 		FROM profiles p
 		JOIN users u ON p.user_id = u.id
-		JOIN accounts a ON a.user_id = u.id
+		LEFT JOIN accounts a ON a.user_id = u.id
 		WHERE p.email = $1
 	`, req.Email).Scan(&userID, &accountID, &firstName, &lastName, &passwordHash)
 
@@ -175,9 +176,15 @@ func LoginHandler(c *gin.Context) {
 		return
 	}
 
+	// Convert sql.NullString to string (empty if null)
+	accountIDStr := ""
+	if accountID.Valid {
+		accountIDStr = accountID.String
+	}
+
 	c.JSON(http.StatusOK, AuthResponse{
 		UserID:    userID,
-		AccountID: accountID,
+		AccountID: accountIDStr,
 		Email:     req.Email,
 		FirstName: firstName,
 		LastName:  lastName,

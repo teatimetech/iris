@@ -431,6 +431,13 @@ func main() {
 		// KYC & Onboarding
 		v1.POST("/kyc/step", KYCStepHandler)
 		v1.POST("/onboarding/complete", OnboardingHandler)
+
+		// Auth group for onboarding endpoints (frontend expects /v1/auth/onboarding)
+		authGroup := v1.Group("/auth")
+		{
+			authGroup.POST("/onboarding/step", KYCStepHandler) // Progress saving
+			authGroup.POST("/onboarding", OnboardingHandler)   // Final submission
+		}
 	}
 
 	port := os.Getenv("PORT")

@@ -23,16 +23,19 @@ export default function LoginPage() {
             console.log('Login API response:', res.data); // Debug logging
 
             // Backend returns: { user_id, account_id, email, first_name, last_name, message }
+            // If account_id is empty/null, user needs to complete onboarding
+            const hasAccount = res.data.account_id && res.data.account_id !== '';
+
             const userData = {
                 id: res.data.user_id,
                 user_id: res.data.user_id,
                 email: res.data.email,
                 first_name: res.data.first_name,
                 last_name: res.data.last_name,
-                account_id: res.data.account_id,
-                accountId: res.data.account_id,
-                kyc_status: 'VERIFIED' as const,
-                kyc_step: 5,
+                account_id: res.data.account_id || '',
+                accountId: res.data.account_id || '',
+                kyc_status: hasAccount ? ('VERIFIED' as const) : ('PENDING' as const),
+                kyc_step: hasAccount ? 5 : 0,
                 kyc_data: '{}'
             };
 
