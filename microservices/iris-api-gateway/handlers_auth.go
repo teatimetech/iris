@@ -212,13 +212,21 @@ func KYCStepHandler(c *gin.Context) {
 		return
 	}
 
+	// Convert empty date string to nil for SQL NULL
+	var dateOfBirth interface{}
+	if req.DateOfBirth == "" {
+		dateOfBirth = nil
+	} else {
+		dateOfBirth = req.DateOfBirth
+	}
+
 	// Update KYC record
 	_, err := db.Exec(`
 		UPDATE kyc
 		SET tax_id = $1, date_of_birth = $2, citizenship = $3,
 		    employment_status = $4, annual_income = $5, net_worth = $6
 		WHERE account_id = $7
-	`, req.TaxID, req.DateOfBirth, req.Citizenship,
+	`, req.TaxID, dateOfBirth, req.Citizenship,
 		req.EmploymentStatus, req.AnnualIncome, req.NetWorth, req.AccountID)
 
 	if err != nil {
