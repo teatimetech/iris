@@ -32,7 +32,7 @@ services:
       - ./tests:/tests
       - ./scripts:/scripts
     working_dir: /tests
-    command: /bin/bash -c "dos2unix /scripts/integration-test-docker.sh && /scripts/integration-test-docker.sh"
+    command: /bin/bash -c "dos2unix /scripts/integration-test-docker.sh && bash /scripts/integration-test-docker.sh"
     depends_on:
       - iris-api-gateway
       - iris-agent-router
